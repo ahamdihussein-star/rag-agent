@@ -811,6 +811,174 @@ def scrape_website(request: UrlRequest):
     except Exception as e:
         return IngestResponse(success=False, message=str(e))
 
+# ==================== Recursive Web Scraper ====================
+
+class RecursiveScrapeRequest(BaseModel):
+    url: str
+    max_depth: int = 2
+    max_pages: int = 20
+    same_path_only: bool = True
+
+class RecursiveScrapeResponse(BaseModel):
+    success: bool
+    message: str
+    total_pages: int = 0
+    total_chunks: int = 0
+    pages_scraped: List[str] = []
+
+def extract_links_from_page(url: str, html_content: str, same_path_only: bool = True) -> List[str]:
+    """Extract valid links from a page that belong to the same context"""
+    from urllib.parse import urlparse, urljoin
+    
+    soup = BeautifulSoup(html_content, 'html.parser')
+    parsed_base = urlparse(url)
+    base_domain = parsed_base.netloc
+    base_path = '/'.join(parsed_base.path.split('/')[:-1]) if parsed_base.path else ''
+    
+    links = set()
+    
+    for a_tag in soup.find_all('a', href=True):
+        href = a_tag['href']
+        
+        # Skip anchors, javascript, mailto, etc.
+        if href.startswith('#') or href.startswith('javascript:') or href.startswith('mailto:') or href.startswith('tel:'):
+            continue
+        
+        # Convert relative URLs to absolute
+        full_url = urljoin(url, href)
+        parsed_url = urlparse(full_url)
+        
+        # Must be same domain
+        if parsed_url.netloc != base_domain:
+            continue
+        
+        # Skip non-http links
+        if parsed_url.scheme not in ['http', 'https']:
+            continue
+        
+        # Skip file downloads
+        if any(parsed_url.path.lower().endswith(ext) for ext in ['.pdf', '.zip', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.gif']):
+            continue
+        
+        # If same_path_only, check if the link starts with the base path
+        if same_path_only:
+            if not parsed_url.path.startswith(base_path):
+                continue
+        
+        # Clean URL (remove fragments and trailing slashes)
+        clean_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
+        clean_url = clean_url.rstrip('/')
+        
+        links.add(clean_url)
+    
+    return list(links)
+
+def scrape_single_page(url: str) -> tuple:
+    """Scrape a single page and return (text_content, html_content, success)"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        html_content = response.text
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Remove unwanted elements
+        for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe', 'noscript']):
+            element.decompose()
+        
+        # Extract text
+        text = soup.get_text(separator='\n', strip=True)
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        full_text = '\n'.join(lines)
+        
+        return full_text, html_content, True
+    except Exception as e:
+        print(f"Error scraping {url}: {e}")
+        return "", "", False
+
+@app.post("/scrape-recursive", response_model=RecursiveScrapeResponse)
+def scrape_website_recursive(request: RecursiveScrapeRequest):
+    """Recursively scrape a website and all its subpages within the same context"""
+    try:
+        from urllib.parse import urlparse
+        
+        start_url = request.url.rstrip('/')
+        max_depth = min(request.max_depth, 3)  # Cap at 3 to prevent infinite loops
+        max_pages = min(request.max_pages, 50)  # Cap at 50 pages
+        same_path_only = request.same_path_only
+        
+        parsed_start = urlparse(start_url)
+        domain = parsed_start.netloc
+        
+        # Track visited URLs and pages to scrape
+        visited = set()
+        to_visit = [(start_url, 0)]  # (url, depth)
+        pages_scraped = []
+        total_chunks = 0
+        
+        while to_visit and len(pages_scraped) < max_pages:
+            current_url, depth = to_visit.pop(0)
+            
+            # Skip if already visited
+            if current_url in visited:
+                continue
+            
+            visited.add(current_url)
+            
+            # Scrape the page
+            text_content, html_content, success = scrape_single_page(current_url)
+            
+            if not success or not text_content or len(text_content) < 100:
+                continue
+            
+            # Ingest the content
+            try:
+                metadata = extract_metadata(text_content, "website")
+                chunks = ingest_document_with_semantic_chunks(text_content, current_url, "website", "", metadata)
+                total_chunks += chunks
+                pages_scraped.append(current_url)
+                print(f"✅ Scraped: {current_url} ({chunks} chunks)")
+            except Exception as e:
+                print(f"Error ingesting {current_url}: {e}")
+                continue
+            
+            # Find more links if we haven't reached max depth
+            if depth < max_depth and len(pages_scraped) < max_pages:
+                new_links = extract_links_from_page(current_url, html_content, same_path_only)
+                
+                for link in new_links:
+                    if link not in visited and (link, depth + 1) not in to_visit:
+                        to_visit.append((link, depth + 1))
+        
+        if not pages_scraped:
+            return RecursiveScrapeResponse(
+                success=False,
+                message="No pages could be scraped",
+                total_pages=0,
+                total_chunks=0,
+                pages_scraped=[]
+            )
+        
+        return RecursiveScrapeResponse(
+            success=True,
+            message=f"✅ Scraped {len(pages_scraped)} pages from {domain} with {total_chunks} total chunks",
+            total_pages=len(pages_scraped),
+            total_chunks=total_chunks,
+            pages_scraped=pages_scraped
+        )
+    
+    except Exception as e:
+        return RecursiveScrapeResponse(
+            success=False,
+            message=str(e),
+            total_pages=0,
+            total_chunks=0,
+            pages_scraped=[]
+        )
+
 @app.post("/youtube", response_model=IngestResponse)
 def process_youtube(request: UrlRequest):
     try:
