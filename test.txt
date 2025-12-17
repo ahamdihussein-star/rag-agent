@@ -1,0 +1,3 @@
+Boomi is a leading integration platform that helps companies connect applications and data.
+It provides tools for API management, EDI, and workflow automation.
+Boomi AI Agent Studio allows users to build intelligent automation agents.

@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Agent - Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
+        .modal { display: none; }
+        .modal.active { display: flex; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-gray-800">
+                <i class="fas fa-cog mr-2"></i>Knowledge Base Admin
+            </h1>
+            <a href="/frontend" class="text-blue-500 hover:text-blue-700">
+                <i class="fas fa-comments mr-1"></i>Back to Chat
+            </a>
+        </div>
+    </header>
+
+    <!-- Stats Cards -->
+    <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex items-center">
+                    <div class="bg-blue-100 rounded-full p-3">
+                        <i class="fas fa-database text-blue-500"></i>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-gray-500 text-sm">Total Vectors</p>
+                        <p class="text-2xl font-bold" id="totalVectors">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex items-center">
+                    <div class="bg-green-100 rounded-full p-3">
+                        <i class="fas fa-file-alt text-green-500"></i>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-gray-500 text-sm">Documents</p>
+                        <p class="text-2xl font-bold" id="totalDocs">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex items-center">
+                    <div class="bg-purple-100 rounded-full p-3">
+                        <i class="fas fa-puzzle-piece text-purple-500"></i>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-gray-500 text-sm">Chunks</p>
+                        <p class="text-2xl font-bold" id="totalChunks">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex items-center">
+                    <div class="bg-yellow-100 rounded-full p-3">
+                        <i class="fas fa-brain text-yellow-500"></i>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-gray-500 text-sm">Memories</p>
+                        <p class="text-2xl font-bold" id="totalMemories">-</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="border-b">
+                <nav class="flex">
+                    <button onclick="showTab('documents')" id="tab-documents" class="px-6 py-3 font-medium tab-active">
+                        <i class="fas fa-file-alt mr-2"></i>Documents
+                    </button>
+                    <button onclick="showTab('websites')" id="tab-websites" class="px-6 py-3 font-medium text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-globe mr-2"></i>Websites
+                    </button>
+                    <button onclick="showTab('youtube')" id="tab-youtube" class="px-6 py-3 font-medium text-gray-500 hover:text-gray-700">
+                        <i class="fab fa-youtube mr-2"></i>YouTube
+                    </button>
+                    <button onclick="showTab('memories')" id="tab-memories" class="px-6 py-3 font-medium text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-brain mr-2"></i>Memories
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Content -->
+            <div class="p-4">
+                <!-- Documents Tab -->
+                <div id="content-documents" class="tab-content">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-semibold">Uploaded Documents</h2>
+                        <button onclick="refreshData()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
+                    </div>
+                    <div id="documents-list" class="space-y-3">
+                        <p class="text-gray-500">Loading...</p>
+                    </div>
+                </div>
+
+                <!-- Websites Tab -->
+                <div id="content-websites" class="tab-content hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-semibold">Scraped Websites</h2>
+                    </div>
+                    <div id="websites-list" class="space-y-3">
+                        <p class="text-gray-500">Loading...</p>
+                    </div>
+                </div>
+
+                <!-- YouTube Tab -->
+                <div id="content-youtube" class="tab-content hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-semibold">YouTube Videos</h2>
+                    </div>
+                    <div id="youtube-list" class="space-y-3">
+                        <p class="text-gray-500">Loading...</p>
+                    </div>
+                </div>
+
+                <!-- Memories Tab -->
+                <div id="content-memories" class="tab-content hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-semibold">Saved Memories</h2>
+                        <button onclick="clearAllMemories()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+                            <i class="fas fa-trash mr-2"></i>Clear All
+                        </button>
+                    </div>
+                    <div id="memories-list" class="space-y-3">
+                        <p class="text-gray-500">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Chunks Modal -->
+    <div id="chunksModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div class="flex justify-between items-center p-4 border-b">
+                <h3 class="text-lg font-semibold" id="modalTitle">Document Chunks</h3>
+                <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-4 overflow-y-auto max-h-[60vh]" id="modalContent">
+                Loading...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+
+        // Load stats
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/stats`);
+                const data = await response.json();
+                document.getElementById('totalVectors').textContent = data.total_vectors || 0;
+                document.getElementById('totalDocs').textContent = data.total_documents || 0;
+                document.getElementById('totalChunks').textContent = data.bm25_chunks || 0;
+                
+                // Load memories count
+                const memResponse = await fetch(`${API_BASE}/admin/memories`);
+                const memData = await memResponse.json();
+                document.getElementById('totalMemories').textContent = memData.total || 0;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        // Load documents
+        async function loadDocuments() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/documents`);
+                const data = await response.json();
+                
+                const docsList = document.getElementById('documents-list');
+                const websList = document.getElementById('websites-list');
+                const ytList = document.getElementById('youtube-list');
+                
+                let docsHtml = '';
+                let websHtml = '';
+                let ytHtml = '';
+                
+                data.documents.forEach(doc => {
+                    const html = createDocumentCard(doc);
+                    
+                    if (doc.type === 'website') {
+                        websHtml += html;
+                    } else if (doc.type === 'youtube') {
+                        ytHtml += html;
+                    } else {
+                        docsHtml += html;
+                    }
+                });
+                
+                docsList.innerHTML = docsHtml || '<p class="text-gray-500">No documents found</p>';
+                websList.innerHTML = websHtml || '<p class="text-gray-500">No websites found</p>';
+                ytList.innerHTML = ytHtml || '<p class="text-gray-500">No YouTube videos found</p>';
+                
+            } catch (error) {
+                console.error('Error loading documents:', error);
+            }
+        }
+
+        // Create document card HTML
+        function createDocumentCard(doc) {
+            const icon = getTypeIcon(doc.type);
+            const date = doc.created_at ? new Date(doc.created_at).toLocaleDateString() : 'Unknown';
+            
+            return `
+                <div class="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div class="flex justify-between items-start">
+                        <div class="flex items-start space-x-3">
+                            <div class="text-2xl">${icon}</div>
+                            <div>
+                                <h3 class="font-semibold">${doc.title}</h3>
+                                <p class="text-sm text-gray-500">${doc.source}</p>
+                                <p class="text-xs text-gray-400 mt-1">Added: ${date}</p>
+                                ${doc.summary ? `<p class="text-sm text-gray-600 mt-2">${doc.summary}</p>` : ''}
+                            </div>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button onclick="viewChunks('${doc.id}')" class="text-blue-500 hover:text-blue-700 px-3 py-1 border rounded">
+                                <i class="fas fa-eye mr-1"></i>View
+                            </button>
+                            <button onclick="deleteDocument('${doc.id}')" class="text-red-500 hover:text-red-700 px-3 py-1 border rounded">
+                                <i class="fas fa-trash mr-1"></i>Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Get icon based on type
+        function getTypeIcon(type) {
+            const icons = {
+                'document': '📄',
+                'website': '🌐',
+                'youtube': '🎥',
+                'image': '🖼️',
+                'video': '🎬',
+                'spreadsheet': '📊',
+                'presentation': '📽️'
+            };
+            return icons[type] || '📄';
+        }
+
+        // View chunks
+        async function viewChunks(docId) {
+            document.getElementById('chunksModal').classList.add('active');
+            document.getElementById('modalContent').innerHTML = '<p class="text-center py-4">Loading...</p>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/documents/${docId}`);
+                const data = await response.json();
+                
+                document.getElementById('modalTitle').textContent = data.document.metadata.title || 'Document Chunks';
+                
+                let chunksHtml = `
+                    <div class="mb-4 p-3 bg-gray-100 rounded">
+                        <p><strong>Source:</strong> ${data.document.metadata.source}</p>
+                        <p><strong>Type:</strong> ${data.document.metadata.type}</p>
+                        <p><strong>Total Chunks:</strong> ${data.chunk_count}</p>
+                    </div>
+                    <h4 class="font-semibold mb-2">Full Content:</h4>
+                    <div class="bg-gray-50 p-3 rounded mb-4 max-h-40 overflow-y-auto text-sm">
+                        ${data.document.content.replace(/\n/g, '<br>')}
+                    </div>
+                    <h4 class="font-semibold mb-2">Chunks:</h4>
+                `;
+                
+                data.chunks.forEach((chunk, index) => {
+                    chunksHtml += `
+                        <div class="border rounded p-3 mb-2">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-sm font-medium text-blue-600">Chunk ${index + 1}</span>
+                                <span class="text-xs text-gray-500">${chunk.chunk_type}</span>
+                            </div>
+                            <p class="text-sm text-gray-700">${chunk.text}</p>
+                        </div>
+                    `;
+                });
+                
+                document.getElementById('modalContent').innerHTML = chunksHtml;
+                
+            } catch (error) {
+                document.getElementById('modalContent').innerHTML = '<p class="text-red-500">Error loading document</p>';
+            }
+        }
+
+        // Delete document
+        async function deleteDocument(docId) {
+            if (!confirm('Are you sure you want to delete this document? This cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/documents/${docId}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('Document deleted successfully');
+                    refreshData();
+                } else {
+                    alert('Error deleting document');
+                }
+            } catch (error) {
+                alert('Error deleting document');
+            }
+        }
+
+        // Load memories
+        async function loadMemories() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/memories`);
+                const data = await response.json();
+                
+                const list = document.getElementById('memories-list');
+                
+                if (data.memories.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500">No memories found</p>';
+                    return;
+                }
+                
+                let html = '';
+                data.memories.forEach(mem => {
+                    const date = mem.timestamp ? new Date(mem.timestamp).toLocaleString() : 'Unknown';
+                    html += `
+                        <div class="border rounded-lg p-4">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="font-medium text-blue-600">Q: ${mem.question}</p>
+                                    <p class="text-sm text-gray-600 mt-1">A: ${mem.answer}</p>
+                                    <p class="text-xs text-gray-400 mt-2">${date} | User: ${mem.user_id}</p>
+                                </div>
+                                <button onclick="deleteMemory('${mem.id}')" class="text-red-500 hover:text-red-700">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                list.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading memories:', error);
+            }
+        }
+
+        // Delete memory
+        async function deleteMemory(memId) {
+            try {
+                const response = await fetch(`${API_BASE}/admin/memories/${memId}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadMemories();
+                    loadStats();
+                }
+            } catch (error) {
+                alert('Error deleting memory');
+            }
+        }
+
+        // Clear all memories
+        async function clearAllMemories() {
+            if (!confirm('Are you sure you want to clear ALL memories? This cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/memories`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(data.message);
+                    loadMemories();
+                    loadStats();
+                }
+            } catch (error) {
+                alert('Error clearing memories');
+            }
+        }
+
+        // Tab switching
+        function showTab(tabName) {
+            // Hide all content
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            // Remove active from all tabs
+            document.querySelectorAll('nav button').forEach(el => {
+                el.classList.remove('tab-active');
+                el.classList.add('text-gray-500');
+            });
+            
+            // Show selected content
+            document.getElementById(`content-${tabName}`).classList.remove('hidden');
+            // Activate tab
+            const tab = document.getElementById(`tab-${tabName}`);
+            tab.classList.add('tab-active');
+            tab.classList.remove('text-gray-500');
+            
+            // Load data if memories tab
+            if (tabName === 'memories') {
+                loadMemories();
+            }
+        }
+
+        // Close modal
+        function closeModal() {
+            document.getElementById('chunksModal').classList.remove('active');
+        }
+
+        // Refresh data
+        function refreshData() {
+            loadStats();
+            loadDocuments();
+        }
+
+        // Close modal on outside click
+        document.getElementById('chunksModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
+
+        // Initial load
+        refreshData();
+    </script>
+</body>
+</html>

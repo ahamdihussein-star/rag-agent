@@ -1,0 +1,13 @@
+.env
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+uploads/*
+!uploads/.gitkeep
+documents/*
+!documents/.gitkeep
+conversations/*
+!conversations/.gitkeep
+bm25_index.json
+*.log
