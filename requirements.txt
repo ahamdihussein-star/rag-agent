@@ -5,7 +5,7 @@ langchain>=0.1.0
 langchain-openai>=0.0.5
 langchain-community>=0.0.20
 langchain-experimental>=0.0.50
-pinecone-client>=3.0.0
+pinecone>=3.0.0
 cohere>=4.40
 openai>=1.10.0
 python-multipart==0.0.6
