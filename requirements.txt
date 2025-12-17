@@ -21,3 +21,4 @@ numpy>=1.26.0
 tiktoken>=0.5.2
 aiofiles>=23.2.1
 # Railway rebuild Wed Dec 17 17:03:22 +04 2025
+langchain-text-splitters>=0.0.1

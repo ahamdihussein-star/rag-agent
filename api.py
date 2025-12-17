@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_experimental.text_splitter import SemanticChunker
 from pinecone import Pinecone
 from dotenv import load_dotenv
