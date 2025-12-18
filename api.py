@@ -2692,6 +2692,32 @@ def debug_test_image_load(img_url: str):
     
     return result
 
+@app.post("/debug/export-content")
+async def debug_export_content(request: ExportRequest):
+    """Debug endpoint to see what content is being sent to export"""
+    import re
+    
+    content = request.content
+    img_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+    
+    # Find all images in content
+    images_found = []
+    for match in img_pattern.finditer(content):
+        images_found.append({
+            "alt": match.group(1),
+            "url": match.group(2)
+        })
+    
+    return {
+        "title": request.title,
+        "content_length": len(content),
+        "content_preview": content[:500],
+        "content_full": content,
+        "images_in_request": request.images,
+        "images_found_in_content": images_found,
+        "total_images_found": len(images_found)
+    }
+
 @app.get("/debug/document-images/{doc_title}")
 def debug_document_images(doc_title: str):
     """Debug endpoint to see images for a specific document"""

@@ -1426,6 +1426,10 @@
             try {
                 const content = decodeURIComponent(escape(atob(encodedContent)));
                 
+                // Debug: log the content being sent
+                console.log('📝 Export to Word - Content:', content);
+                console.log('📝 Export to Word - Images in content:', content.match(/!\[([^\]]*)\]\(([^)]+)\)/g));
+                
                 const response = await fetch(`${API_URL}/export/word`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
