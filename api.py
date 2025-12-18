@@ -1061,12 +1061,12 @@ def chat(request: ChatRequest):
     # Add image info to prompt with full URLs for inline embedding
     image_info = ""
     if images:
-        image_info = "\n\n=== AVAILABLE IMAGES (MUST USE THESE EXACT URLs) ===\n"
+        image_info = "\n\n=== SCREENSHOTS AVAILABLE (YOU MUST EMBED THESE) ===\n"
         for i, img in enumerate(images[:10], 1):
-            alt = img.get('alt', '') or img.get('context', f'Image {i}')
             url = img.get('url', '')
-            image_info += f"Image {i}: Description=\"{alt[:80]}\" | URL=\"{url}\"\n"
-        image_info += "=== END IMAGES ===\n"
+            image_info += f"SCREENSHOT_{i}: ![Screenshot {i}]({url})\n"
+        image_info += "=== END SCREENSHOTS ===\n"
+        image_info += "\nIMPORTANT: Copy and paste the SCREENSHOT lines above into your response where relevant!\n"
     
     prompt = f"""You are a friendly and helpful AI assistant.
 
@@ -1089,10 +1089,15 @@ Instructions:
 - NEVER list sources in text - shown separately
 - Be thorough - include ALL relevant details
 - When asked to list ALL items, include EVERY item found
-- **CRITICAL IMAGE RULE**: When images are listed above, you MUST include them using EXACTLY the URLs provided
-- Format: ![description](EXACT_URL_FROM_LIST)
-- NEVER invent or use placeholder URLs like "placeholder.com" - only use URLs from the AVAILABLE IMAGES list above
-- Place relevant images after the steps they illustrate
+
+**SCREENSHOT EMBEDDING RULE**:
+If SCREENSHOTS are listed above, you MUST embed them in your response.
+Simply COPY the exact line like: ![Screenshot 1](/doc-images/xxx.jpeg)
+Place screenshots after the relevant step they illustrate.
+Example response format:
+"1. Go to Settings
+![Screenshot 1](/doc-images/xxx.jpeg)
+2. Click Add..."
 
 Response:"""
     
@@ -2140,12 +2145,12 @@ async def generate_stream(question: str, user_id: str, conversation_id: str):
     # Add image info to prompt with full URLs for inline embedding
     image_info = ""
     if images:
-        image_info = "\n\n=== AVAILABLE IMAGES (MUST USE THESE EXACT URLs) ===\n"
+        image_info = "\n\n=== SCREENSHOTS AVAILABLE (YOU MUST EMBED THESE) ===\n"
         for i, img in enumerate(images[:10], 1):
-            alt = img.get('alt', '') or img.get('context', f'Image {i}')
             url = img.get('url', '')
-            image_info += f"Image {i}: Description=\"{alt[:80]}\" | URL=\"{url}\"\n"
-        image_info += "=== END IMAGES ===\n"
+            image_info += f"SCREENSHOT_{i}: ![Screenshot {i}]({url})\n"
+        image_info += "=== END SCREENSHOTS ===\n"
+        image_info += "\nIMPORTANT: Copy and paste the SCREENSHOT lines above into your response where relevant!\n"
     
     # Build prompt
     prompt = f"""You are a friendly and helpful AI assistant.
@@ -2169,10 +2174,15 @@ Instructions:
 - NEVER list sources in text - shown separately
 - Be thorough - include ALL relevant details
 - When asked to list ALL items, include EVERY item found
-- **CRITICAL IMAGE RULE**: When images are listed above, you MUST include them using EXACTLY the URLs provided
-- Format: ![description](EXACT_URL_FROM_LIST)
-- NEVER invent or use placeholder URLs like "placeholder.com" - only use URLs from the AVAILABLE IMAGES list above
-- Place relevant images after the steps they illustrate
+
+**SCREENSHOT EMBEDDING RULE**:
+If SCREENSHOTS are listed above, you MUST embed them in your response.
+Simply COPY the exact line like: ![Screenshot 1](/doc-images/xxx.jpeg)
+Place screenshots after the relevant step they illustrate.
+Example response format:
+"1. Go to Settings
+![Screenshot 1](/doc-images/xxx.jpeg)
+2. Click Add..."
 
 Response:"""
     
