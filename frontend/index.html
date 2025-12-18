@@ -550,6 +550,20 @@
             cursor: pointer;
         }
 
+        /* Inline Images in Response */
+        .message-content img {
+            max-width: 100%;
+            border-radius: 10px;
+            margin: 15px 0;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .message-content img:hover {
+            transform: scale(1.02);
+        }
+
         /* Chat Input */
         .chat-input-container {
             padding: 15px 20px;
@@ -1197,7 +1211,6 @@
             const contentDiv = messageDiv.querySelector('.message-content');
             let fullContent = '';
             let sources = [];
-            let images = [];
 
             try {
                 const params = new URLSearchParams({
@@ -1217,7 +1230,6 @@
 
                         if (data.type === 'sources') {
                             sources = data.data;
-                            images = data.images || [];
                             currentConversationId = data.conversation_id;
                         } else if (data.type === 'chunk') {
                             fullContent += data.data;
@@ -1228,8 +1240,8 @@
                         } else if (data.type === 'done') {
                             eventSource.close();
                             contentDiv.classList.remove('streaming');
-                            if (sources.length > 0 || images.length > 0) {
-                                contentDiv.innerHTML += buildSourcesHtml(sources, images, fullContent);
+                            if (sources.length > 0) {
+                                contentDiv.innerHTML += buildSourcesHtml(sources, fullContent);
                             }
                             streamingBadge.classList.add('hidden');
                         } else if (data.type === 'error') {
@@ -1249,8 +1261,8 @@
                     contentDiv.classList.remove('streaming');
                     if (!fullContent) {
                         contentDiv.innerHTML = '<p style="color: #ff6b6b;">Connection error. Please try again.</p>';
-                    } else if (sources.length > 0 || images.length > 0) {
-                        contentDiv.innerHTML += buildSourcesHtml(sources, images, fullContent);
+                    } else if (sources.length > 0) {
+                        contentDiv.innerHTML += buildSourcesHtml(sources, fullContent);
                     }
                     streamingBadge.classList.add('hidden');
                 };
@@ -1295,7 +1307,7 @@
             }
         }
 
-        function buildSourcesHtml(sources, images = [], content = '') {
+        function buildSourcesHtml(sources, content = '') {
             let html = '<div class="sources"><div class="sources-title">📚 Sources</div><ul>';
             sources.forEach(source => {
                 const icon = source.type === 'youtube' ? '🎬' : 
@@ -1319,46 +1331,23 @@
             });
             html += '</ul></div>';
             
-            // Add images section if images exist
-            if (images && images.length > 0) {
-                html += buildImagesHtml(images);
-            }
-            
             // Add export buttons if there's content
             if (content) {
-                html += buildExportButtons(content, images);
+                html += buildExportButtons(content);
             }
             
             return html;
         }
 
-        function buildImagesHtml(images) {
-            if (!images || images.length === 0) return '';
-            
-            let html = '<div class="images-section"><div class="images-title">🖼️ Related Images</div><div class="images-grid">';
-            images.forEach((img, index) => {
-                const caption = img.alt || img.context || `Image ${index + 1}`;
-                html += `
-                    <div class="image-card" onclick="openImageModal('${img.url}', '${escapeHtml(caption)}')">
-                        <img src="${img.url}" alt="${escapeHtml(caption)}" onerror="this.parentElement.style.display='none'">
-                        <div class="image-caption">${escapeHtml(caption.substring(0, 50))}</div>
-                    </div>
-                `;
-            });
-            html += '</div></div>';
-            return html;
-        }
-
-        function buildExportButtons(content, images = []) {
+        function buildExportButtons(content) {
             const escapedContent = btoa(unescape(encodeURIComponent(content)));
-            const escapedImages = btoa(unescape(encodeURIComponent(JSON.stringify(images || []))));
             
             return `
                 <div class="export-section">
-                    <button class="export-btn word" onclick="exportToWord('${escapedContent}', '${escapedImages}')">
+                    <button class="export-btn word" onclick="exportToWord('${escapedContent}')">
                         <span>📝</span> Export to Word
                     </button>
-                    <button class="export-btn pdf" onclick="exportToPDF('${escapedContent}', '${escapedImages}')">
+                    <button class="export-btn pdf" onclick="exportToPDF('${escapedContent}')">
                         <span>📄</span> Export to PDF
                     </button>
                 </div>
@@ -1379,10 +1368,9 @@
             document.getElementById('imageModal').classList.remove('active');
         }
 
-        async function exportToWord(encodedContent, encodedImages) {
+        async function exportToWord(encodedContent) {
             try {
                 const content = decodeURIComponent(escape(atob(encodedContent)));
-                const images = JSON.parse(decodeURIComponent(escape(atob(encodedImages))));
                 
                 const response = await fetch(`${API_URL}/export/word`, {
                     method: 'POST',
@@ -1390,7 +1378,7 @@
                     body: JSON.stringify({
                         content: content,
                         title: 'RAG Agent Export',
-                        images: images
+                        images: []
                     })
                 });
                 
@@ -1413,10 +1401,9 @@
             }
         }
 
-        async function exportToPDF(encodedContent, encodedImages) {
+        async function exportToPDF(encodedContent) {
             try {
                 const content = decodeURIComponent(escape(atob(encodedContent)));
-                const images = JSON.parse(decodeURIComponent(escape(atob(encodedImages))));
                 
                 const response = await fetch(`${API_URL}/export/pdf`, {
                     method: 'POST',
@@ -1424,7 +1411,7 @@
                     body: JSON.stringify({
                         content: content,
                         title: 'RAG Agent Export',
-                        images: images
+                        images: []
                     })
                 });
                 
@@ -1781,6 +1768,13 @@
         // Recursive scraping toggle
         document.getElementById('recursive-scrape').addEventListener('change', function() {
             document.getElementById('recursive-options').style.display = this.checked ? 'block' : 'none';
+        });
+
+        // Click handler for inline images in chat messages
+        document.getElementById('chat-messages').addEventListener('click', function(e) {
+            if (e.target.tagName === 'IMG' && e.target.closest('.message-content')) {
+                openImageModal(e.target.src, e.target.alt || 'Image');
+            }
         });
     </script>
     <!-- Image Modal -->

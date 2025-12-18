@@ -1058,12 +1058,14 @@ def chat(request: ChatRequest):
     
     doc_context, sources, images = get_document_context_with_sources(search_query)
     
-    # Add image info to prompt if images found
+    # Add image info to prompt with full URLs for inline embedding
     image_info = ""
     if images:
-        image_info = "\n\nRelevant Images (can be referenced in response):\n"
-        for i, img in enumerate(images[:5], 1):
-            image_info += f"- Image {i}: {img.get('alt', 'No description')} (from {img.get('doc_title', 'Unknown')})\n"
+        image_info = "\n\nAvailable Images (USE THESE INLINE in your response where relevant):\n"
+        for i, img in enumerate(images[:10], 1):
+            alt = img.get('alt', '') or img.get('context', f'Image {i}')
+            url = img.get('url', '')
+            image_info += f"- [{alt[:100]}]({url})\n"
     
     prompt = f"""You are a friendly and helpful AI assistant.
 
@@ -1086,7 +1088,9 @@ Instructions:
 - NEVER list sources in text - shown separately
 - Be thorough - include ALL relevant details
 - When asked to list ALL items, include EVERY item found
-- If relevant images are available and helpful for the answer, mention them
+- **IMPORTANT: If images are available, INSERT them INLINE using markdown format: ![description](url)**
+- Place each image RIGHT AFTER the step or content it illustrates
+- Example: After explaining step 3, add the image that shows step 3
 
 Response:"""
     
@@ -1099,13 +1103,12 @@ Response:"""
         save_to_memory(question, answer, user_id)
     
     source_objects = [Source(**s) for s in sources]
-    image_objects = [ImageInfo(**img) for img in images]
     
     return ChatResponse(
         answer=answer,
         memories_found=len([s for s in sources if s['type'] == 'memory']),
         sources=source_objects,
-        images=image_objects,
+        images=[],  # No longer needed separately since images are inline
         conversation_id=conversation_id
     )
 
@@ -1951,16 +1954,18 @@ async def generate_stream(question: str, user_id: str, conversation_id: str):
     # Get document context (من كل المصادر بما فيهم memory)
     doc_context, sources, images = get_document_context_with_sources(search_query)
     
-    # Send sources and images first
-    sources_json = json.dumps({"type": "sources", "data": sources, "images": images, "conversation_id": conversation_id})
+    # Send sources first (no need to send images separately now)
+    sources_json = json.dumps({"type": "sources", "data": sources, "conversation_id": conversation_id})
     yield f"data: {sources_json}\n\n"
     
-    # Add image info to prompt if images found
+    # Add image info to prompt with full URLs for inline embedding
     image_info = ""
     if images:
-        image_info = "\n\nRelevant Images (can be referenced in response):\n"
-        for i, img in enumerate(images[:5], 1):
-            image_info += f"- Image {i}: {img.get('alt', 'No description')} (from {img.get('doc_title', 'Unknown')})\n"
+        image_info = "\n\nAvailable Images (USE THESE INLINE in your response where relevant):\n"
+        for i, img in enumerate(images[:10], 1):
+            alt = img.get('alt', '') or img.get('context', f'Image {i}')
+            url = img.get('url', '')
+            image_info += f"- [{alt[:100]}]({url})\n"
     
     # Build prompt
     prompt = f"""You are a friendly and helpful AI assistant.
@@ -1984,7 +1989,9 @@ Instructions:
 - NEVER list sources in text - shown separately
 - Be thorough - include ALL relevant details
 - When asked to list ALL items, include EVERY item found
-- If relevant images are available and helpful for the answer, mention them
+- **IMPORTANT: If images are available, INSERT them INLINE using markdown format: ![description](url)**
+- Place each image RIGHT AFTER the step or content it illustrates
+- Example: After explaining step 3, add the image that shows step 3
 
 Response:"""
     
@@ -2036,7 +2043,7 @@ class ExportRequest(BaseModel):
 
 @app.post("/export/word")
 async def export_to_word(request: ExportRequest):
-    """Export content with images to Word document"""
+    """Export content with inline images to Word document"""
     from docx import Document
     from docx.shared import Inches, Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -2053,74 +2060,101 @@ async def export_to_word(request: ExportRequest):
     content = request.content
     lines = content.split('\n')
     
+    # Regex to find markdown images: ![alt](url)
+    img_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+    
     for line in lines:
         line = line.strip()
         if not line:
             continue
         
-        # Handle headers
-        if line.startswith('### '):
-            doc.add_heading(line[4:], level=3)
-        elif line.startswith('## '):
-            doc.add_heading(line[3:], level=2)
-        elif line.startswith('# '):
-            doc.add_heading(line[2:], level=1)
-        # Handle bullet points
-        elif line.startswith('- ') or line.startswith('* '):
-            p = doc.add_paragraph(style='List Bullet')
-            # Handle bold text
-            text = line[2:]
-            parts = re.split(r'\*\*(.*?)\*\*', text)
-            for i, part in enumerate(parts):
-                if i % 2 == 1:  # Bold part
-                    p.add_run(part).bold = True
-                else:
-                    p.add_run(part)
-        # Handle numbered lists
-        elif re.match(r'^\d+\.', line):
-            p = doc.add_paragraph(style='List Number')
-            text = re.sub(r'^\d+\.\s*', '', line)
-            parts = re.split(r'\*\*(.*?)\*\*', text)
-            for i, part in enumerate(parts):
-                if i % 2 == 1:
-                    p.add_run(part).bold = True
-                else:
-                    p.add_run(part)
-        # Regular paragraph
-        else:
-            p = doc.add_paragraph()
-            # Handle bold text
-            parts = re.split(r'\*\*(.*?)\*\*', line)
-            for i, part in enumerate(parts):
-                if i % 2 == 1:
-                    p.add_run(part).bold = True
-                else:
-                    p.add_run(part)
-    
-    # Add images section if images exist
-    if request.images:
-        doc.add_page_break()
-        doc.add_heading('Related Images', level=1)
+        # Check for inline images in the line
+        img_matches = list(img_pattern.finditer(line))
         
-        for i, img in enumerate(request.images, 1):
-            try:
-                # Download image
-                headers = {'User-Agent': 'Mozilla/5.0'}
-                response = requests.get(img['url'], headers=headers, timeout=10)
-                if response.status_code == 200:
-                    image_stream = io.BytesIO(response.content)
-                    doc.add_picture(image_stream, width=Inches(5))
-                    
-                    # Add caption
-                    caption = img.get('alt', '') or img.get('context', f'Image {i}')
-                    cap_para = doc.add_paragraph(caption[:200])
-                    cap_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    cap_para.runs[0].font.size = Pt(10)
-                    cap_para.runs[0].font.italic = True
-                    doc.add_paragraph()  # Spacing
-            except Exception as e:
-                # If image fails, add placeholder text
-                doc.add_paragraph(f"[Image {i}: {img.get('alt', 'Could not load image')}]")
+        if img_matches:
+            # Process line with images
+            last_end = 0
+            for match in img_matches:
+                # Add text before image
+                text_before = line[last_end:match.start()].strip()
+                if text_before:
+                    p = doc.add_paragraph()
+                    parts = re.split(r'\*\*(.*?)\*\*', text_before)
+                    for i, part in enumerate(parts):
+                        if i % 2 == 1:
+                            p.add_run(part).bold = True
+                        else:
+                            p.add_run(part)
+                
+                # Add image
+                alt_text = match.group(1)
+                img_url = match.group(2)
+                try:
+                    headers = {'User-Agent': 'Mozilla/5.0'}
+                    response = requests.get(img_url, headers=headers, timeout=10)
+                    if response.status_code == 200:
+                        image_stream = io.BytesIO(response.content)
+                        doc.add_picture(image_stream, width=Inches(5))
+                        
+                        # Add caption
+                        if alt_text:
+                            cap_para = doc.add_paragraph(alt_text[:200])
+                            cap_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            cap_para.runs[0].font.size = Pt(10)
+                            cap_para.runs[0].font.italic = True
+                except Exception as e:
+                    doc.add_paragraph(f"[Image: {alt_text or 'Could not load'}]")
+                
+                last_end = match.end()
+            
+            # Add remaining text after last image
+            text_after = line[last_end:].strip()
+            if text_after:
+                p = doc.add_paragraph()
+                parts = re.split(r'\*\*(.*?)\*\*', text_after)
+                for i, part in enumerate(parts):
+                    if i % 2 == 1:
+                        p.add_run(part).bold = True
+                    else:
+                        p.add_run(part)
+        else:
+            # No images - handle normally
+            # Handle headers
+            if line.startswith('### '):
+                doc.add_heading(line[4:], level=3)
+            elif line.startswith('## '):
+                doc.add_heading(line[3:], level=2)
+            elif line.startswith('# '):
+                doc.add_heading(line[2:], level=1)
+            # Handle bullet points
+            elif line.startswith('- ') or line.startswith('* '):
+                p = doc.add_paragraph(style='List Bullet')
+                text = line[2:]
+                parts = re.split(r'\*\*(.*?)\*\*', text)
+                for i, part in enumerate(parts):
+                    if i % 2 == 1:
+                        p.add_run(part).bold = True
+                    else:
+                        p.add_run(part)
+            # Handle numbered lists
+            elif re.match(r'^\d+\.', line):
+                p = doc.add_paragraph(style='List Number')
+                text = re.sub(r'^\d+\.\s*', '', line)
+                parts = re.split(r'\*\*(.*?)\*\*', text)
+                for i, part in enumerate(parts):
+                    if i % 2 == 1:
+                        p.add_run(part).bold = True
+                    else:
+                        p.add_run(part)
+            # Regular paragraph
+            else:
+                p = doc.add_paragraph()
+                parts = re.split(r'\*\*(.*?)\*\*', line)
+                for i, part in enumerate(parts):
+                    if i % 2 == 1:
+                        p.add_run(part).bold = True
+                    else:
+                        p.add_run(part)
     
     # Save to bytes
     doc_bytes = io.BytesIO()
@@ -2137,7 +2171,7 @@ async def export_to_word(request: ExportRequest):
 
 @app.post("/export/pdf")
 async def export_to_pdf(request: ExportRequest):
-    """Export content with images to PDF"""
+    """Export content with inline images to PDF"""
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
@@ -2188,79 +2222,99 @@ async def export_to_pdf(request: ExportRequest):
     story.append(Paragraph(request.title, styles['CustomTitle']))
     story.append(Spacer(1, 20))
     
+    # Regex to find markdown images
+    img_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+    
     # Parse content
     content = request.content
     lines = content.split('\n')
     current_list = []
     
+    def add_inline_image(url, alt_text):
+        """Helper to add image to story"""
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                image_stream = io.BytesIO(response.content)
+                img_obj = RLImage(image_stream, width=4*inch, height=3*inch, kind='proportional')
+                story.append(img_obj)
+                if alt_text:
+                    story.append(Paragraph(alt_text[:150], styles['Caption']))
+        except Exception as e:
+            story.append(Paragraph(f"[Image: {alt_text or 'Could not load'}]", styles['Caption']))
+    
     for line in lines:
         line = line.strip()
         if not line:
-            # Flush any pending list
             if current_list:
                 story.append(ListFlowable(current_list, bulletType='bullet'))
                 current_list = []
             continue
         
-        # Convert markdown bold to HTML
-        line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
+        # Check for inline images
+        img_matches = list(img_pattern.finditer(line))
         
-        # Handle headers
-        if line.startswith('### '):
+        if img_matches:
+            # Flush pending list
             if current_list:
                 story.append(ListFlowable(current_list, bulletType='bullet'))
                 current_list = []
-            story.append(Paragraph(line[4:], styles['Heading3']))
-        elif line.startswith('## '):
-            if current_list:
-                story.append(ListFlowable(current_list, bulletType='bullet'))
-                current_list = []
-            story.append(Paragraph(line[3:], styles['Heading2']))
-        elif line.startswith('# '):
-            if current_list:
-                story.append(ListFlowable(current_list, bulletType='bullet'))
-                current_list = []
-            story.append(Paragraph(line[2:], styles['CustomHeading']))
-        # Handle bullet points
-        elif line.startswith('- ') or line.startswith('* '):
-            current_list.append(ListItem(Paragraph(line[2:], styles['CustomBody'])))
-        # Handle numbered lists
-        elif re.match(r'^\d+\.', line):
-            if current_list:
-                story.append(ListFlowable(current_list, bulletType='bullet'))
-                current_list = []
-            text = re.sub(r'^\d+\.\s*', '', line)
-            story.append(Paragraph(text, styles['CustomBody']))
-        # Regular paragraph
+            
+            # Process line with images
+            last_end = 0
+            for match in img_matches:
+                # Add text before image
+                text_before = line[last_end:match.start()].strip()
+                if text_before:
+                    text_before = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text_before)
+                    story.append(Paragraph(text_before, styles['CustomBody']))
+                
+                # Add image
+                add_inline_image(match.group(2), match.group(1))
+                last_end = match.end()
+            
+            # Add remaining text
+            text_after = line[last_end:].strip()
+            if text_after:
+                text_after = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text_after)
+                story.append(Paragraph(text_after, styles['CustomBody']))
         else:
-            if current_list:
-                story.append(ListFlowable(current_list, bulletType='bullet'))
-                current_list = []
-            story.append(Paragraph(line, styles['CustomBody']))
+            # No images - handle normally
+            line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
+            
+            if line.startswith('### '):
+                if current_list:
+                    story.append(ListFlowable(current_list, bulletType='bullet'))
+                    current_list = []
+                story.append(Paragraph(line[4:], styles['Heading3']))
+            elif line.startswith('## '):
+                if current_list:
+                    story.append(ListFlowable(current_list, bulletType='bullet'))
+                    current_list = []
+                story.append(Paragraph(line[3:], styles['Heading2']))
+            elif line.startswith('# '):
+                if current_list:
+                    story.append(ListFlowable(current_list, bulletType='bullet'))
+                    current_list = []
+                story.append(Paragraph(line[2:], styles['CustomHeading']))
+            elif line.startswith('- ') or line.startswith('* '):
+                current_list.append(ListItem(Paragraph(line[2:], styles['CustomBody'])))
+            elif re.match(r'^\d+\.', line):
+                if current_list:
+                    story.append(ListFlowable(current_list, bulletType='bullet'))
+                    current_list = []
+                text = re.sub(r'^\d+\.\s*', '', line)
+                story.append(Paragraph(text, styles['CustomBody']))
+            else:
+                if current_list:
+                    story.append(ListFlowable(current_list, bulletType='bullet'))
+                    current_list = []
+                story.append(Paragraph(line, styles['CustomBody']))
     
     # Flush any remaining list
     if current_list:
         story.append(ListFlowable(current_list, bulletType='bullet'))
-    
-    # Add images section
-    if request.images:
-        story.append(Spacer(1, 30))
-        story.append(Paragraph("Related Images", styles['CustomHeading']))
-        story.append(Spacer(1, 15))
-        
-        for i, img in enumerate(request.images, 1):
-            try:
-                headers = {'User-Agent': 'Mozilla/5.0'}
-                response = requests.get(img['url'], headers=headers, timeout=10)
-                if response.status_code == 200:
-                    image_stream = io.BytesIO(response.content)
-                    img_obj = RLImage(image_stream, width=4*inch, height=3*inch, kind='proportional')
-                    story.append(img_obj)
-                    
-                    caption = img.get('alt', '') or img.get('context', f'Image {i}')
-                    story.append(Paragraph(caption[:200], styles['Caption']))
-            except Exception as e:
-                story.append(Paragraph(f"[Image {i}: Could not load]", styles['Caption']))
     
     # Build PDF
     doc.build(story)
