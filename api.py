@@ -1011,56 +1011,102 @@ def process_youtube(request: UrlRequest):
 
 @app.get("/stats")
 def get_stats():
-    stats = index.describe_index_stats()
-    doc_count = len([f for f in os.listdir(DOCUMENTS_FOLDER) if f.endswith('.json')])
-    bm25_data = load_bm25_index()
-    bm25_count = len(bm25_data.get("documents", []))
-    
-    return {
-        "total_vectors": stats.total_vector_count,
-        "total_documents": doc_count,
-        "bm25_index_size": bm25_count,
-        "index_name": os.getenv("PINECONE_INDEX_NAME"),
-        "chunking_type": "Semantic",
-        "search_type": "Hybrid (All Sources + Memory)"
-    }
+    try:
+        # Get Pinecone stats
+        try:
+            stats = index.describe_index_stats()
+            total_vectors = stats.total_vector_count
+        except Exception as e:
+            print(f"Pinecone stats error: {e}")
+            total_vectors = 0
+        
+        # Count local documents
+        try:
+            os.makedirs(DOCUMENTS_FOLDER, exist_ok=True)
+            doc_count = len([f for f in os.listdir(DOCUMENTS_FOLDER) if f.endswith('.json')])
+        except Exception as e:
+            print(f"Document count error: {e}")
+            doc_count = 0
+        
+        # Count BM25 index
+        try:
+            bm25_data = load_bm25_index()
+            bm25_count = len(bm25_data.get("documents", []))
+        except Exception as e:
+            print(f"BM25 index error: {e}")
+            bm25_count = 0
+        
+        return {
+            "total_vectors": total_vectors,
+            "total_documents": doc_count,
+            "bm25_index_size": bm25_count,
+            "index_name": os.getenv("PINECONE_INDEX_NAME"),
+            "chunking_type": "Semantic",
+            "search_type": "Hybrid (All Sources + Memory)"
+        }
+    except Exception as e:
+        print(f"Stats error: {e}")
+        return {
+            "total_vectors": 0,
+            "total_documents": 0,
+            "bm25_index_size": 0,
+            "index_name": os.getenv("PINECONE_INDEX_NAME"),
+            "chunking_type": "Semantic",
+            "search_type": "Hybrid (All Sources + Memory)",
+            "error": str(e)
+        }
 
 @app.get("/files")
 def list_files():
-    files = []
-    for filename in os.listdir(UPLOADS_FOLDER):
-        file_path = os.path.join(UPLOADS_FOLDER, filename)
-        files.append({
-            "filename": filename,
-            "size": os.path.getsize(file_path),
-            "download_url": f"/download/{filename}"
-        })
-    return {"files": files}
+    try:
+        os.makedirs(UPLOADS_FOLDER, exist_ok=True)
+        files = []
+        for filename in os.listdir(UPLOADS_FOLDER):
+            file_path = os.path.join(UPLOADS_FOLDER, filename)
+            if os.path.isfile(file_path):
+                files.append({
+                    "filename": filename,
+                    "size": os.path.getsize(file_path),
+                    "download_url": f"/download/{filename}"
+                })
+        return {"files": files}
+    except Exception as e:
+        print(f"List files error: {e}")
+        return {"files": [], "error": str(e)}
 
 # ==================== Admin Dashboard Endpoints ====================
 
 @app.get("/admin/documents")
 def get_all_documents():
-    documents = []
-    
-    for filename in os.listdir(DOCUMENTS_FOLDER):
-        if filename.endswith('.json'):
-            doc_path = os.path.join(DOCUMENTS_FOLDER, filename)
-            with open(doc_path, 'r', encoding='utf-8') as f:
-                doc = json.load(f)
-                documents.append({
-                    "id": doc['id'],
-                    "title": doc['metadata'].get('title', 'Unknown'),
-                    "source": doc['metadata'].get('source', 'Unknown'),
-                    "type": doc['metadata'].get('type', 'document'),
-                    "file_path": doc['metadata'].get('file_path', ''),
-                    "summary": doc['metadata'].get('summary', ''),
-                    "created_at": doc.get('created_at', ''),
-                    "content_preview": doc['content'][:500] + "..." if len(doc['content']) > 500 else doc['content']
-                })
-    
-    documents.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-    return {"documents": documents, "total": len(documents)}
+    try:
+        os.makedirs(DOCUMENTS_FOLDER, exist_ok=True)
+        documents = []
+        
+        for filename in os.listdir(DOCUMENTS_FOLDER):
+            if filename.endswith('.json'):
+                try:
+                    doc_path = os.path.join(DOCUMENTS_FOLDER, filename)
+                    with open(doc_path, 'r', encoding='utf-8') as f:
+                        doc = json.load(f)
+                        documents.append({
+                            "id": doc['id'],
+                            "title": doc['metadata'].get('title', 'Unknown'),
+                            "source": doc['metadata'].get('source', 'Unknown'),
+                            "type": doc['metadata'].get('type', 'document'),
+                            "file_path": doc['metadata'].get('file_path', ''),
+                            "summary": doc['metadata'].get('summary', ''),
+                            "created_at": doc.get('created_at', ''),
+                            "content_preview": doc['content'][:500] + "..." if len(doc['content']) > 500 else doc['content']
+                        })
+                except Exception as e:
+                    print(f"Error reading document {filename}: {e}")
+                    continue
+        
+        documents.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        return {"documents": documents, "total": len(documents)}
+    except Exception as e:
+        print(f"Admin documents error: {e}")
+        return {"documents": [], "total": 0, "error": str(e)}
 
 @app.get("/admin/documents/{doc_id}")
 def get_document_detail(doc_id: str):
@@ -1200,23 +1246,53 @@ def clear_all_memories():
 
 @app.get("/admin/stats")
 def get_admin_stats():
-    stats = index.describe_index_stats()
-    doc_count = len([f for f in os.listdir(DOCUMENTS_FOLDER) if f.endswith('.json')])
-    bm25_data = load_bm25_index()
-    
-    type_counts = {"document": 0, "website": 0, "youtube": 0, "image": 0, "video": 0}
-    for meta in bm25_data.get('metadata', []):
-        doc_type = meta.get('type', 'document')
-        if doc_type in type_counts:
-            type_counts[doc_type] += 1
-    
-    return {
-        "total_vectors": stats.total_vector_count,
-        "total_documents": doc_count,
-        "bm25_chunks": len(bm25_data.get('documents', [])),
-        "type_breakdown": type_counts,
-        "index_name": os.getenv("PINECONE_INDEX_NAME")
-    }
+    try:
+        # Get Pinecone stats
+        try:
+            stats = index.describe_index_stats()
+            total_vectors = stats.total_vector_count
+        except Exception as e:
+            print(f"Pinecone stats error: {e}")
+            total_vectors = 0
+        
+        # Count local documents
+        try:
+            os.makedirs(DOCUMENTS_FOLDER, exist_ok=True)
+            doc_count = len([f for f in os.listdir(DOCUMENTS_FOLDER) if f.endswith('.json')])
+        except Exception as e:
+            print(f"Document count error: {e}")
+            doc_count = 0
+        
+        # Load BM25 data
+        try:
+            bm25_data = load_bm25_index()
+        except Exception as e:
+            print(f"BM25 load error: {e}")
+            bm25_data = {"documents": [], "metadata": []}
+        
+        type_counts = {"document": 0, "website": 0, "youtube": 0, "image": 0, "video": 0}
+        for meta in bm25_data.get('metadata', []):
+            doc_type = meta.get('type', 'document')
+            if doc_type in type_counts:
+                type_counts[doc_type] += 1
+        
+        return {
+            "total_vectors": total_vectors,
+            "total_documents": doc_count,
+            "bm25_chunks": len(bm25_data.get('documents', [])),
+            "type_breakdown": type_counts,
+            "index_name": os.getenv("PINECONE_INDEX_NAME")
+        }
+    except Exception as e:
+        print(f"Admin stats error: {e}")
+        return {
+            "total_vectors": 0,
+            "total_documents": 0,
+            "bm25_chunks": 0,
+            "type_breakdown": {"document": 0, "website": 0, "youtube": 0, "image": 0, "video": 0},
+            "index_name": os.getenv("PINECONE_INDEX_NAME"),
+            "error": str(e)
+        }
 
 # ==================== Streaming Chat Endpoint ====================
 
