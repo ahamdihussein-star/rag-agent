@@ -1232,7 +1232,13 @@ def scrape_website(request: UrlRequest):
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         
-        soup = BeautifulSoup(response.text, 'html.parser')
+        html_content = response.text
+        
+        # Extract images BEFORE removing elements
+        images = extract_images_from_page(url, html_content)
+        print(f"🖼️ Extracted {len(images)} images from {url}")
+        
+        soup = BeautifulSoup(html_content, 'html.parser')
         for element in soup(['script', 'style', 'nav', 'footer', 'header']):
             element.decompose()
         
@@ -1248,9 +1254,9 @@ def scrape_website(request: UrlRequest):
         from urllib.parse import urlparse
         domain = urlparse(url).netloc
         
-        chunks = ingest_document_with_semantic_chunks(full_text, url, "website", "", metadata)
+        chunks = ingest_document_with_semantic_chunks(full_text, url, "website", "", metadata, images=images)
         
-        return IngestResponse(success=True, message=f"✅ Scraped {domain} with {chunks} semantic chunks", chunks=chunks)
+        return IngestResponse(success=True, message=f"✅ Scraped {domain} with {chunks} chunks, {len(images)} images", chunks=chunks)
     
     except Exception as e:
         return IngestResponse(success=False, message=str(e))
@@ -1446,19 +1452,19 @@ def scrape_website_recursive(request: RecursiveScrapeRequest):
             
             visited.add(current_url)
             
-            # Scrape the page
-            text_content, html_content, success = scrape_single_page(current_url)
+            # Scrape the page (now returns 4 values including images)
+            text_content, html_content, images, success = scrape_single_page(current_url)
             
             if not success or not text_content or len(text_content) < 100:
                 continue
             
-            # Ingest the content
+            # Ingest the content with images
             try:
                 metadata = extract_metadata(text_content, "website")
-                chunks = ingest_document_with_semantic_chunks(text_content, current_url, "website", "", metadata)
+                chunks = ingest_document_with_semantic_chunks(text_content, current_url, "website", "", metadata, images=images)
                 total_chunks += chunks
                 pages_scraped.append(current_url)
-                print(f"✅ Scraped: {current_url} ({chunks} chunks)")
+                print(f"✅ Scraped: {current_url} ({chunks} chunks, {len(images)} images)")
             except Exception as e:
                 print(f"Error ingesting {current_url}: {e}")
                 continue
@@ -2268,6 +2274,24 @@ async def export_to_pdf(request: ExportRequest):
     )
 
 # ==================== Debug Endpoint ====================
+
+@app.get("/debug/images")
+def debug_images(url: str):
+    """Debug endpoint to test image extraction from a URL"""
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        images = extract_images_from_page(url, response.text)
+        
+        return {
+            "url": url,
+            "images_found": len(images),
+            "images": images
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/debug/search")
 def debug_search(query: str):
