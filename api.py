@@ -84,10 +84,18 @@ class Source(BaseModel):
     score: float
     download_url: Optional[str] = None
 
+class ImageInfo(BaseModel):
+    url: str
+    alt: Optional[str] = None
+    title: Optional[str] = None
+    context: Optional[str] = None
+    doc_title: Optional[str] = None
+
 class ChatResponse(BaseModel):
     answer: str
     memories_found: int
     sources: List[Source] = []
+    images: List[ImageInfo] = []
     conversation_id: str
 
 class IngestResponse(BaseModel):
@@ -178,12 +186,13 @@ def search_bm25(query: str, top_k: int = 10) -> List[dict]:
 
 # ==================== Document Storage ====================
 
-def save_full_document(doc_id: str, content: str, metadata: dict):
+def save_full_document(doc_id: str, content: str, metadata: dict, images: List[dict] = None):
     doc_path = os.path.join(DOCUMENTS_FOLDER, f"{doc_id}.json")
     doc_data = {
         "id": doc_id,
         "content": content,
         "metadata": metadata,
+        "images": images or [],
         "created_at": datetime.now().isoformat()
     }
     with open(doc_path, 'w', encoding='utf-8') as f:
@@ -378,7 +387,7 @@ def hybrid_search(query: str, top_k: int = 10, source_filter: dict = None) -> Li
     return sorted_results[:top_k]
 
 def get_document_context_with_sources(query: str, top_k: int = 10, display_min_score: float = 0.30):
-    """Get context from ALL sources including memory"""
+    """Get context from ALL sources including memory and images"""
     
     # دور في كل المصادر (بدون filter)
     search_results = hybrid_search(query, top_k=top_k, source_filter=None)
@@ -391,6 +400,7 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
     sources_info = []
     memory_contexts = []
     chunk_texts = {}  # Store chunk texts as fallback
+    all_images = []  # Store images from relevant documents
     
     for doc in reranked_docs:
         metadata = doc.get('metadata', {})
@@ -477,6 +487,13 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
         used_parent_ids.add(parent_id)
         context += f"=== {doc['metadata'].get('title', 'Document')} ===\n"
         context += doc['content'] + "\n\n"
+        
+        # Collect images from document
+        doc_images = doc.get('images', [])
+        if doc_images:
+            for img in doc_images:
+                img['doc_title'] = doc['metadata'].get('title', 'Document')
+                all_images.append(img)
     
     # Fallback: Add chunk texts for documents not found locally
     for parent_id, chunk_data in chunk_texts.items():
@@ -495,6 +512,7 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
             context += f"A: {mem['answer']}\n\n"
     
     print(f"📝 Final context length: {len(context)}")
+    print(f"🖼️ Images found: {len(all_images)}")
     
     # Remove duplicate sources
     seen_sources = set()
@@ -505,7 +523,7 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
             seen_sources.add(source_key)
             unique_sources.append(source)
     
-    return context, unique_sources[:5]
+    return context, unique_sources[:5], all_images[:10]  # Limit to 10 images
 
 def save_to_memory(question: str, answer: str, user_id: str):
     memory_text = f"Question: {question}\nAnswer: {answer}"
@@ -591,7 +609,7 @@ def extract_domain_name(url: str) -> str:
     except:
         return ""
 
-def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: str, file_path: str, metadata: dict):
+def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: str, file_path: str, metadata: dict, images: List[dict] = None):
     parent_id = f"parent_{uuid.uuid4().hex[:12]}"
     
     # Extract domain/company name for better search
@@ -604,11 +622,11 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
         "title": metadata.get("title", source),
         "summary": metadata.get("summary", ""),
         "domain": domain_name
-    })
+    }, images=images)
     
     chunks = smart_chunk_text(full_text)
     
-    print(f"📦 Created {len(chunks)} semantic chunks for {source} (domain: {domain_name})")
+    print(f"📦 Created {len(chunks)} semantic chunks for {source} (domain: {domain_name}, images: {len(images) if images else 0})")
     
     metadata_list = []
     for i, chunk in enumerate(chunks):
@@ -665,7 +683,7 @@ def error_event(message: str):
     data = {"type": "error", "message": message}
     return f"data: {json.dumps(data)}\n\n"
 
-def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: str, metadata: dict):
+def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: str, metadata: dict, images: List[dict] = None):
     """Generator that yields progress updates during ingestion"""
     
     parent_id = f"parent_{uuid.uuid4().hex[:12]}"
@@ -680,14 +698,15 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
         "title": metadata.get("title", source),
         "summary": metadata.get("summary", ""),
         "domain": domain_name
-    })
+    }, images=images)
     
     yield progress_event("chunking", 45, "Creating semantic chunks...")
     
     chunks = smart_chunk_text(full_text)
     total_chunks = len(chunks)
     
-    yield progress_event("chunking", 50, f"Created {total_chunks} chunks")
+    img_count = len(images) if images else 0
+    yield progress_event("chunking", 50, f"Created {total_chunks} chunks, {img_count} images")
     
     metadata_list = []
     for i, chunk in enumerate(chunks):
@@ -723,7 +742,7 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
     yield progress_event("bm25", 97, "Adding to BM25 index...")
     add_to_bm25_index(chunks, metadata_list)
     
-    yield done_event(f"✅ Ingested with {total_chunks} chunks", total_chunks)
+    yield done_event(f"✅ Ingested with {total_chunks} chunks, {img_count} images", total_chunks)
 
 # ==================== Streaming Scrape Endpoint ====================
 
@@ -739,9 +758,14 @@ async def scrape_website_stream(url: str):
             response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
             
+            html_content = response.text
+            
             yield progress_event("parsing", 20, "Parsing HTML content...")
             
-            soup = BeautifulSoup(response.text, 'html.parser')
+            # Extract images BEFORE removing elements
+            images = extract_images_from_page(url, html_content)
+            
+            soup = BeautifulSoup(html_content, 'html.parser')
             for element in soup(['script', 'style', 'nav', 'footer', 'header']):
                 element.decompose()
             
@@ -753,11 +777,12 @@ async def scrape_website_stream(url: str):
                 yield error_event("No content found on page")
                 return
             
+            yield progress_event("images", 25, f"Found {len(images)} images")
             yield progress_event("metadata", 30, "Extracting metadata...")
             metadata = extract_metadata(full_text, "website")
             
-            # Use the progress generator for ingestion
-            for event in ingest_with_progress(full_text, url, "website", "", metadata):
+            # Use the progress generator for ingestion with images
+            for event in ingest_with_progress(full_text, url, "website", "", metadata, images=images):
                 yield event
                 
         except Exception as e:
@@ -777,6 +802,7 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
             to_visit = [(url, 0)]  # (url, depth)
             pages_scraped = []
             total_chunks = 0
+            total_images = 0
             
             yield progress_event("starting", 5, f"Starting recursive scrape from {url}")
             
@@ -810,6 +836,10 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                             if link not in visited and len(to_visit) + len(visited) < max_pages * 2:
                                 to_visit.append((link, depth + 1))
                     
+                    # Extract images BEFORE removing elements
+                    images = extract_images_from_page(current_url, html_content)
+                    total_images += len(images)
+                    
                     # Parse content
                     soup = BeautifulSoup(html_content, 'html.parser')
                     for element in soup(['script', 'style', 'nav', 'footer', 'header']):
@@ -821,13 +851,13 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                     
                     if full_text and len(full_text) > 100:
                         metadata = extract_metadata(full_text[:3000], "website")
-                        chunks = ingest_document_with_semantic_chunks(full_text, current_url, "website", "", metadata)
+                        chunks = ingest_document_with_semantic_chunks(full_text, current_url, "website", "", metadata, images=images)
                         total_chunks += chunks
                         pages_scraped.append(current_url)
                         
                         yield progress_event("page_done", overall_progress,
-                            f"✓ Page {page_num}: {chunks} chunks",
-                            page_url=current_url, page_chunks=chunks)
+                            f"✓ Page {page_num}: {chunks} chunks, {len(images)} images",
+                            page_url=current_url, page_chunks=chunks, page_images=len(images))
                     
                 except Exception as e:
                     yield progress_event("page_error", overall_progress,
@@ -835,10 +865,11 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                     continue
             
             yield done_event(
-                f"✅ Scraped {len(pages_scraped)} pages with {total_chunks} total chunks",
+                f"✅ Scraped {len(pages_scraped)} pages with {total_chunks} chunks, {total_images} images",
                 total_chunks,
                 pages_scraped=pages_scraped,
-                total_pages=len(pages_scraped)
+                total_pages=len(pages_scraped),
+                total_images=total_images
             )
             
         except Exception as e:
@@ -1025,7 +1056,14 @@ def chat(request: ChatRequest):
         user_messages = [m['content'] for m in conv['messages'] if m['role'] == 'user'][-3:]
         search_query = " ".join(user_messages)
     
-    doc_context, sources = get_document_context_with_sources(search_query)
+    doc_context, sources, images = get_document_context_with_sources(search_query)
+    
+    # Add image info to prompt if images found
+    image_info = ""
+    if images:
+        image_info = "\n\nRelevant Images (can be referenced in response):\n"
+        for i, img in enumerate(images[:5], 1):
+            image_info += f"- Image {i}: {img.get('alt', 'No description')} (from {img.get('doc_title', 'Unknown')})\n"
     
     prompt = f"""You are a friendly and helpful AI assistant.
 
@@ -1033,6 +1071,7 @@ def chat(request: ChatRequest):
 
 Available Information (Documents + Memory):
 {doc_context if doc_context.strip() else "No specific information found."}
+{image_info}
 
 User Message: {question}
 
@@ -1047,6 +1086,7 @@ Instructions:
 - NEVER list sources in text - shown separately
 - Be thorough - include ALL relevant details
 - When asked to list ALL items, include EVERY item found
+- If relevant images are available and helpful for the answer, mention them
 
 Response:"""
     
@@ -1059,11 +1099,13 @@ Response:"""
         save_to_memory(question, answer, user_id)
     
     source_objects = [Source(**s) for s in sources]
+    image_objects = [ImageInfo(**img) for img in images]
     
     return ChatResponse(
         answer=answer,
         memories_found=len([s for s in sources if s['type'] == 'memory']),
         sources=source_objects,
+        images=image_objects,
         conversation_id=conversation_id
     )
 
@@ -1290,8 +1332,64 @@ def extract_links_from_page(url: str, html_content: str, same_path_only: bool = 
     
     return list(links)
 
+def extract_images_from_page(url: str, html_content: str, min_size: int = 100) -> List[dict]:
+    """Extract meaningful images from a page (skip icons, logos, etc.)"""
+    from urllib.parse import urlparse, urljoin
+    
+    soup = BeautifulSoup(html_content, 'html.parser')
+    images = []
+    
+    for img in soup.find_all('img'):
+        src = img.get('src', '')
+        if not src:
+            continue
+        
+        # Convert relative URLs to absolute
+        img_url = urljoin(url, src)
+        
+        # Skip data URIs and tiny images (likely icons)
+        if img_url.startswith('data:'):
+            continue
+        
+        # Skip common icon/logo patterns
+        skip_patterns = ['icon', 'logo', 'avatar', 'emoji', 'badge', 'button', 'sprite', 'tracking', 'pixel', 'spacer']
+        if any(pattern in img_url.lower() for pattern in skip_patterns):
+            continue
+        
+        # Get alt text and surrounding context
+        alt_text = img.get('alt', '')
+        title = img.get('title', '')
+        
+        # Try to get context from parent elements
+        context = ""
+        parent = img.parent
+        for _ in range(3):  # Go up 3 levels max
+            if parent:
+                # Look for nearby text
+                text = parent.get_text(strip=True)[:200] if parent.get_text(strip=True) else ""
+                if text and len(text) > len(context):
+                    context = text
+                parent = parent.parent
+        
+        # Check for figure caption
+        figure = img.find_parent('figure')
+        if figure:
+            figcaption = figure.find('figcaption')
+            if figcaption:
+                context = figcaption.get_text(strip=True)
+        
+        images.append({
+            'url': img_url,
+            'alt': alt_text,
+            'title': title,
+            'context': context[:300] if context else alt_text,
+            'source_page': url
+        })
+    
+    return images
+
 def scrape_single_page(url: str) -> tuple:
-    """Scrape a single page and return (text_content, html_content, success)"""
+    """Scrape a single page and return (text_content, html_content, images, success)"""
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -1302,6 +1400,9 @@ def scrape_single_page(url: str) -> tuple:
         html_content = response.text
         soup = BeautifulSoup(html_content, 'html.parser')
         
+        # Extract images BEFORE removing elements
+        images = extract_images_from_page(url, html_content)
+        
         # Remove unwanted elements
         for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe', 'noscript']):
             element.decompose()
@@ -1311,10 +1412,10 @@ def scrape_single_page(url: str) -> tuple:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         full_text = '\n'.join(lines)
         
-        return full_text, html_content, True
+        return full_text, html_content, images, True
     except Exception as e:
         print(f"Error scraping {url}: {e}")
-        return "", "", False
+        return "", "", [], False
 
 @app.post("/scrape-recursive", response_model=RecursiveScrapeResponse)
 def scrape_website_recursive(request: RecursiveScrapeRequest):
@@ -1842,11 +1943,18 @@ async def generate_stream(question: str, user_id: str, conversation_id: str):
         search_query = " ".join(user_messages)
     
     # Get document context (من كل المصادر بما فيهم memory)
-    doc_context, sources = get_document_context_with_sources(search_query)
+    doc_context, sources, images = get_document_context_with_sources(search_query)
     
-    # Send sources first
-    sources_json = json.dumps({"type": "sources", "data": sources, "conversation_id": conversation_id})
+    # Send sources and images first
+    sources_json = json.dumps({"type": "sources", "data": sources, "images": images, "conversation_id": conversation_id})
     yield f"data: {sources_json}\n\n"
+    
+    # Add image info to prompt if images found
+    image_info = ""
+    if images:
+        image_info = "\n\nRelevant Images (can be referenced in response):\n"
+        for i, img in enumerate(images[:5], 1):
+            image_info += f"- Image {i}: {img.get('alt', 'No description')} (from {img.get('doc_title', 'Unknown')})\n"
     
     # Build prompt
     prompt = f"""You are a friendly and helpful AI assistant.
@@ -1855,6 +1963,7 @@ async def generate_stream(question: str, user_id: str, conversation_id: str):
 
 Available Information (Documents + Memory):
 {doc_context if doc_context.strip() else "No specific information found."}
+{image_info}
 
 User Message: {question}
 
@@ -1869,6 +1978,7 @@ Instructions:
 - NEVER list sources in text - shown separately
 - Be thorough - include ALL relevant details
 - When asked to list ALL items, include EVERY item found
+- If relevant images are available and helpful for the answer, mention them
 
 Response:"""
     
@@ -1909,6 +2019,252 @@ async def chat_stream(message: str, user_id: str = "default_user", conversation_
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no"
         }
+    )
+
+# ==================== Export Endpoints ====================
+
+class ExportRequest(BaseModel):
+    content: str
+    title: str = "Export"
+    images: List[dict] = []
+
+@app.post("/export/word")
+async def export_to_word(request: ExportRequest):
+    """Export content with images to Word document"""
+    from docx import Document
+    from docx.shared import Inches, Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    import io
+    import re
+    
+    doc = Document()
+    
+    # Add title
+    title = doc.add_heading(request.title, 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # Parse markdown-like content and add to document
+    content = request.content
+    lines = content.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Handle headers
+        if line.startswith('### '):
+            doc.add_heading(line[4:], level=3)
+        elif line.startswith('## '):
+            doc.add_heading(line[3:], level=2)
+        elif line.startswith('# '):
+            doc.add_heading(line[2:], level=1)
+        # Handle bullet points
+        elif line.startswith('- ') or line.startswith('* '):
+            p = doc.add_paragraph(style='List Bullet')
+            # Handle bold text
+            text = line[2:]
+            parts = re.split(r'\*\*(.*?)\*\*', text)
+            for i, part in enumerate(parts):
+                if i % 2 == 1:  # Bold part
+                    p.add_run(part).bold = True
+                else:
+                    p.add_run(part)
+        # Handle numbered lists
+        elif re.match(r'^\d+\.', line):
+            p = doc.add_paragraph(style='List Number')
+            text = re.sub(r'^\d+\.\s*', '', line)
+            parts = re.split(r'\*\*(.*?)\*\*', text)
+            for i, part in enumerate(parts):
+                if i % 2 == 1:
+                    p.add_run(part).bold = True
+                else:
+                    p.add_run(part)
+        # Regular paragraph
+        else:
+            p = doc.add_paragraph()
+            # Handle bold text
+            parts = re.split(r'\*\*(.*?)\*\*', line)
+            for i, part in enumerate(parts):
+                if i % 2 == 1:
+                    p.add_run(part).bold = True
+                else:
+                    p.add_run(part)
+    
+    # Add images section if images exist
+    if request.images:
+        doc.add_page_break()
+        doc.add_heading('Related Images', level=1)
+        
+        for i, img in enumerate(request.images, 1):
+            try:
+                # Download image
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                response = requests.get(img['url'], headers=headers, timeout=10)
+                if response.status_code == 200:
+                    image_stream = io.BytesIO(response.content)
+                    doc.add_picture(image_stream, width=Inches(5))
+                    
+                    # Add caption
+                    caption = img.get('alt', '') or img.get('context', f'Image {i}')
+                    cap_para = doc.add_paragraph(caption[:200])
+                    cap_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    cap_para.runs[0].font.size = Pt(10)
+                    cap_para.runs[0].font.italic = True
+                    doc.add_paragraph()  # Spacing
+            except Exception as e:
+                # If image fails, add placeholder text
+                doc.add_paragraph(f"[Image {i}: {img.get('alt', 'Could not load image')}]")
+    
+    # Save to bytes
+    doc_bytes = io.BytesIO()
+    doc.save(doc_bytes)
+    doc_bytes.seek(0)
+    
+    # Return as downloadable file
+    filename = f"{request.title.replace(' ', '_')}.docx"
+    return StreamingResponse(
+        doc_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@app.post("/export/pdf")
+async def export_to_pdf(request: ExportRequest):
+    """Export content with images to PDF"""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, ListFlowable, ListItem
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    import io
+    import re
+    
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=72)
+    
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    styles.add(ParagraphStyle(
+        name='CustomTitle',
+        parent=styles['Title'],
+        fontSize=24,
+        spaceAfter=30,
+        alignment=TA_CENTER
+    ))
+    styles.add(ParagraphStyle(
+        name='CustomHeading',
+        parent=styles['Heading1'],
+        fontSize=16,
+        spaceAfter=12,
+        spaceBefore=20
+    ))
+    styles.add(ParagraphStyle(
+        name='CustomBody',
+        parent=styles['Normal'],
+        fontSize=11,
+        spaceAfter=8,
+        leading=14
+    ))
+    styles.add(ParagraphStyle(
+        name='Caption',
+        parent=styles['Normal'],
+        fontSize=9,
+        alignment=TA_CENTER,
+        italic=True,
+        spaceAfter=15
+    ))
+    
+    story = []
+    
+    # Add title
+    story.append(Paragraph(request.title, styles['CustomTitle']))
+    story.append(Spacer(1, 20))
+    
+    # Parse content
+    content = request.content
+    lines = content.split('\n')
+    current_list = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            # Flush any pending list
+            if current_list:
+                story.append(ListFlowable(current_list, bulletType='bullet'))
+                current_list = []
+            continue
+        
+        # Convert markdown bold to HTML
+        line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
+        
+        # Handle headers
+        if line.startswith('### '):
+            if current_list:
+                story.append(ListFlowable(current_list, bulletType='bullet'))
+                current_list = []
+            story.append(Paragraph(line[4:], styles['Heading3']))
+        elif line.startswith('## '):
+            if current_list:
+                story.append(ListFlowable(current_list, bulletType='bullet'))
+                current_list = []
+            story.append(Paragraph(line[3:], styles['Heading2']))
+        elif line.startswith('# '):
+            if current_list:
+                story.append(ListFlowable(current_list, bulletType='bullet'))
+                current_list = []
+            story.append(Paragraph(line[2:], styles['CustomHeading']))
+        # Handle bullet points
+        elif line.startswith('- ') or line.startswith('* '):
+            current_list.append(ListItem(Paragraph(line[2:], styles['CustomBody'])))
+        # Handle numbered lists
+        elif re.match(r'^\d+\.', line):
+            if current_list:
+                story.append(ListFlowable(current_list, bulletType='bullet'))
+                current_list = []
+            text = re.sub(r'^\d+\.\s*', '', line)
+            story.append(Paragraph(text, styles['CustomBody']))
+        # Regular paragraph
+        else:
+            if current_list:
+                story.append(ListFlowable(current_list, bulletType='bullet'))
+                current_list = []
+            story.append(Paragraph(line, styles['CustomBody']))
+    
+    # Flush any remaining list
+    if current_list:
+        story.append(ListFlowable(current_list, bulletType='bullet'))
+    
+    # Add images section
+    if request.images:
+        story.append(Spacer(1, 30))
+        story.append(Paragraph("Related Images", styles['CustomHeading']))
+        story.append(Spacer(1, 15))
+        
+        for i, img in enumerate(request.images, 1):
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                response = requests.get(img['url'], headers=headers, timeout=10)
+                if response.status_code == 200:
+                    image_stream = io.BytesIO(response.content)
+                    img_obj = RLImage(image_stream, width=4*inch, height=3*inch, kind='proportional')
+                    story.append(img_obj)
+                    
+                    caption = img.get('alt', '') or img.get('context', f'Image {i}')
+                    story.append(Paragraph(caption[:200], styles['Caption']))
+            except Exception as e:
+                story.append(Paragraph(f"[Image {i}: Could not load]", styles['Caption']))
+    
+    # Build PDF
+    doc.build(story)
+    buffer.seek(0)
+    
+    filename = f"{request.title.replace(' ', '_')}.pdf"
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 # ==================== Debug Endpoint ====================

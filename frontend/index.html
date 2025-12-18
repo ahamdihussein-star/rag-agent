@@ -425,6 +425,131 @@
             text-decoration: none;
         }
 
+        /* Images Section */
+        .images-section {
+            margin-top: 16px;
+            padding-top: 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .images-title {
+            color: #00ff88;
+            font-weight: 600;
+            margin-bottom: 12px;
+            font-size: 0.88rem;
+        }
+
+        .images-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .image-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .image-card:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 15px rgba(0, 217, 255, 0.3);
+        }
+
+        .image-card img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+        }
+
+        .image-card .image-caption {
+            padding: 8px 10px;
+            font-size: 0.75rem;
+            color: #aaa;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Export Buttons */
+        .export-section {
+            margin-top: 16px;
+            padding-top: 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .export-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .export-btn.word {
+            background: linear-gradient(135deg, #2b579a, #1e3a5f);
+            color: white;
+        }
+
+        .export-btn.pdf {
+            background: linear-gradient(135deg, #ff4444, #cc0000);
+            color: white;
+        }
+
+        .export-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .export-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Image Modal */
+        .image-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .image-modal.active {
+            display: flex;
+        }
+
+        .image-modal img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 10px;
+        }
+
+        .image-modal-close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 30px;
+            cursor: pointer;
+        }
+
         /* Chat Input */
         .chat-input-container {
             padding: 15px 20px;
@@ -1072,6 +1197,7 @@
             const contentDiv = messageDiv.querySelector('.message-content');
             let fullContent = '';
             let sources = [];
+            let images = [];
 
             try {
                 const params = new URLSearchParams({
@@ -1091,6 +1217,7 @@
 
                         if (data.type === 'sources') {
                             sources = data.data;
+                            images = data.images || [];
                             currentConversationId = data.conversation_id;
                         } else if (data.type === 'chunk') {
                             fullContent += data.data;
@@ -1101,8 +1228,8 @@
                         } else if (data.type === 'done') {
                             eventSource.close();
                             contentDiv.classList.remove('streaming');
-                            if (sources.length > 0) {
-                                contentDiv.innerHTML += buildSourcesHtml(sources);
+                            if (sources.length > 0 || images.length > 0) {
+                                contentDiv.innerHTML += buildSourcesHtml(sources, images, fullContent);
                             }
                             streamingBadge.classList.add('hidden');
                         } else if (data.type === 'error') {
@@ -1122,8 +1249,8 @@
                     contentDiv.classList.remove('streaming');
                     if (!fullContent) {
                         contentDiv.innerHTML = '<p style="color: #ff6b6b;">Connection error. Please try again.</p>';
-                    } else if (sources.length > 0) {
-                        contentDiv.innerHTML += buildSourcesHtml(sources);
+                    } else if (sources.length > 0 || images.length > 0) {
+                        contentDiv.innerHTML += buildSourcesHtml(sources, images, fullContent);
                     }
                     streamingBadge.classList.add('hidden');
                 };
@@ -1168,7 +1295,7 @@
             }
         }
 
-        function buildSourcesHtml(sources) {
+        function buildSourcesHtml(sources, images = [], content = '') {
             let html = '<div class="sources"><div class="sources-title">📚 Sources</div><ul>';
             sources.forEach(source => {
                 const icon = source.type === 'youtube' ? '🎬' : 
@@ -1190,7 +1317,134 @@
                 
                 html += `<li><span>${icon}</span> ${linkHtml} ${downloadHtml} <span class="score">${Math.round(source.score * 100)}%</span></li>`;
             });
-            return html + '</ul></div>';
+            html += '</ul></div>';
+            
+            // Add images section if images exist
+            if (images && images.length > 0) {
+                html += buildImagesHtml(images);
+            }
+            
+            // Add export buttons if there's content
+            if (content) {
+                html += buildExportButtons(content, images);
+            }
+            
+            return html;
+        }
+
+        function buildImagesHtml(images) {
+            if (!images || images.length === 0) return '';
+            
+            let html = '<div class="images-section"><div class="images-title">🖼️ Related Images</div><div class="images-grid">';
+            images.forEach((img, index) => {
+                const caption = img.alt || img.context || `Image ${index + 1}`;
+                html += `
+                    <div class="image-card" onclick="openImageModal('${img.url}', '${escapeHtml(caption)}')">
+                        <img src="${img.url}" alt="${escapeHtml(caption)}" onerror="this.parentElement.style.display='none'">
+                        <div class="image-caption">${escapeHtml(caption.substring(0, 50))}</div>
+                    </div>
+                `;
+            });
+            html += '</div></div>';
+            return html;
+        }
+
+        function buildExportButtons(content, images = []) {
+            const escapedContent = btoa(unescape(encodeURIComponent(content)));
+            const escapedImages = btoa(unescape(encodeURIComponent(JSON.stringify(images || []))));
+            
+            return `
+                <div class="export-section">
+                    <button class="export-btn word" onclick="exportToWord('${escapedContent}', '${escapedImages}')">
+                        <span>📝</span> Export to Word
+                    </button>
+                    <button class="export-btn pdf" onclick="exportToPDF('${escapedContent}', '${escapedImages}')">
+                        <span>📄</span> Export to PDF
+                    </button>
+                </div>
+            `;
+        }
+
+        function openImageModal(url, caption) {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            const modalCaption = document.getElementById('modalCaption');
+            
+            modal.classList.add('active');
+            modalImg.src = url;
+            modalCaption.textContent = caption;
+        }
+
+        function closeImageModal() {
+            document.getElementById('imageModal').classList.remove('active');
+        }
+
+        async function exportToWord(encodedContent, encodedImages) {
+            try {
+                const content = decodeURIComponent(escape(atob(encodedContent)));
+                const images = JSON.parse(decodeURIComponent(escape(atob(encodedImages))));
+                
+                const response = await fetch(`${API_URL}/export/word`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: content,
+                        title: 'RAG Agent Export',
+                        images: images
+                    })
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'RAG_Agent_Export.docx';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                } else {
+                    alert('Failed to export to Word');
+                }
+            } catch (error) {
+                console.error('Export error:', error);
+                alert('Export failed: ' + error.message);
+            }
+        }
+
+        async function exportToPDF(encodedContent, encodedImages) {
+            try {
+                const content = decodeURIComponent(escape(atob(encodedContent)));
+                const images = JSON.parse(decodeURIComponent(escape(atob(encodedImages))));
+                
+                const response = await fetch(`${API_URL}/export/pdf`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: content,
+                        title: 'RAG Agent Export',
+                        images: images
+                    })
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'RAG_Agent_Export.pdf';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                } else {
+                    alert('Failed to export to PDF');
+                }
+            } catch (error) {
+                console.error('Export error:', error);
+                alert('Export failed: ' + error.message);
+            }
         }
 
         function addMessage(text, type, isHtml = false) {
@@ -1529,5 +1783,12 @@
             document.getElementById('recursive-options').style.display = this.checked ? 'block' : 'none';
         });
     </script>
+    <!-- Image Modal -->
+    <div id="imageModal" class="image-modal" onclick="closeImageModal()">
+        <span class="image-modal-close" onclick="closeImageModal()">&times;</span>
+        <img id="modalImage" src="" alt="">
+        <p id="modalCaption" style="color: white; text-align: center; margin-top: 15px; font-size: 14px;"></p>
+    </div>
+
 </body>
 </html>
