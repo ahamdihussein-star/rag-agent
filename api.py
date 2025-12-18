@@ -384,14 +384,21 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
     search_results = hybrid_search(query, top_k=top_k, source_filter=None)
     reranked_docs = rerank_results(query, search_results, top_n=5)
     
+    print(f"🔍 Search results count: {len(search_results)}")
+    print(f"🔍 Reranked docs count: {len(reranked_docs)}")
+    
     parent_ids = []
     sources_info = []
     memory_contexts = []
+    chunk_texts = {}  # Store chunk texts as fallback
     
     for doc in reranked_docs:
         metadata = doc.get('metadata', {})
         score = doc.get('score', 0)
         doc_type = metadata.get('type', 'document')
+        chunk_text = doc.get('text', '') or metadata.get('text', '')  # Try both places
+        
+        print(f"📄 Doc type: {doc_type}, Score: {score}, Has text: {bool(chunk_text)}, Text length: {len(chunk_text) if chunk_text else 0}")
         
         # Handle Memory
         if doc_type == 'memory':
@@ -417,6 +424,15 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
             if parent_id and parent_id not in parent_ids:
                 parent_ids.append(parent_id)
                 
+                # Store chunk text as fallback
+                if chunk_text:
+                    if parent_id not in chunk_texts:
+                        chunk_texts[parent_id] = {
+                            'title': metadata.get('title', metadata.get('filename', 'Document')),
+                            'texts': []
+                        }
+                    chunk_texts[parent_id]['texts'].append(chunk_text)
+                
                 if score >= display_min_score:
                     source_url = metadata.get('source', 'Unknown')
                     source_title = metadata.get('title', metadata.get('filename', source_url))
@@ -434,16 +450,37 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
                         "score": round(score, 2),
                         "download_url": download_url
                     })
+            elif parent_id and chunk_text:
+                # Add more chunks for existing parent
+                if parent_id in chunk_texts:
+                    chunk_texts[parent_id]['texts'].append(chunk_text)
     
-    # Build context from full documents
+    print(f"📚 Parent IDs found: {len(parent_ids)}")
+    print(f"📚 Chunk texts collected: {len(chunk_texts)}")
+    
+    # Build context from full documents OR chunk texts
     full_documents = get_full_documents_by_ids(parent_ids)
     
-    context = ""
+    print(f"📚 Full documents loaded: {len(full_documents)}")
     
-    # Add Documents Context
+    context = ""
+    used_parent_ids = set()
+    
+    # Add Documents Context (from full documents)
     for doc in full_documents:
+        parent_id = doc.get('id', '')
+        used_parent_ids.add(parent_id)
         context += f"=== {doc['metadata'].get('title', 'Document')} ===\n"
         context += doc['content'] + "\n\n"
+    
+    # Fallback: Add chunk texts for documents not found locally
+    for parent_id, chunk_data in chunk_texts.items():
+        if parent_id not in used_parent_ids:
+            print(f"⚠️ Using fallback chunks for: {chunk_data['title']}")
+            context += f"=== {chunk_data['title']} ===\n"
+            # Join unique chunks
+            unique_texts = list(set(chunk_data['texts']))
+            context += "\n".join(unique_texts[:3]) + "\n\n"  # Limit to 3 chunks
     
     # Add Memory Context
     if memory_contexts:
@@ -451,6 +488,8 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
         for mem in memory_contexts:
             context += f"Q: {mem['question']}\n"
             context += f"A: {mem['answer']}\n\n"
+    
+    print(f"📝 Final context length: {len(context)}")
     
     # Remove duplicate sources
     seen_sources = set()
