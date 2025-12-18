@@ -142,6 +142,31 @@
                 </div>
             </div>
         </div>
+
+        <!-- Danger Zone - Clear All -->
+        <div class="bg-white rounded-lg shadow mt-6 border-2 border-red-200">
+            <div class="p-4 bg-red-50 rounded-t-lg border-b border-red-200">
+                <h2 class="text-lg font-semibold text-red-700">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>Danger Zone
+                </h2>
+            </div>
+            <div class="p-4">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h3 class="font-semibold text-gray-800">Clear All Knowledge Base</h3>
+                        <p class="text-sm text-gray-500">Delete all documents, websites, and YouTube videos from the knowledge base. This action cannot be undone.</p>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <button onclick="clearAllKnowledgeBase(false)" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 whitespace-nowrap">
+                            <i class="fas fa-trash mr-2"></i>Clear Knowledge Base
+                        </button>
+                        <button onclick="clearAllKnowledgeBase(true)" class="bg-red-700 text-white px-4 py-2 rounded hover:bg-red-800 whitespace-nowrap">
+                            <i class="fas fa-bomb mr-2"></i>Clear Everything (incl. Memories)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- View Chunks Modal -->
@@ -159,8 +184,37 @@
         </div>
     </div>
 
+    <!-- Clear All Confirmation Modal -->
+    <div id="clearAllModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div class="p-4 border-b bg-red-50">
+                <h3 class="text-lg font-semibold text-red-700">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>Confirm Clear All
+                </h3>
+            </div>
+            <div class="p-4">
+                <p class="text-gray-700 mb-4" id="clearAllMessage">Are you sure you want to clear all knowledge base data?</p>
+                <div class="mb-4">
+                    <label class="flex items-center">
+                        <input type="checkbox" id="confirmClearCheckbox" class="mr-2">
+                        <span class="text-sm text-gray-600">I understand this action cannot be undone</span>
+                    </label>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button onclick="closeClearAllModal()" class="px-4 py-2 border rounded hover:bg-gray-100">
+                        Cancel
+                    </button>
+                    <button onclick="confirmClearAll()" id="confirmClearBtn" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <i class="fas fa-trash mr-2"></i>Clear All
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_BASE = '';
+        let pendingClearIncludeMemories = false;
 
         // Load stats
         async function loadStats() {
@@ -403,6 +457,72 @@
             }
         }
 
+        // Clear All Knowledge Base
+        function clearAllKnowledgeBase(includeMemories) {
+            pendingClearIncludeMemories = includeMemories;
+            
+            if (includeMemories) {
+                document.getElementById('clearAllMessage').textContent = 
+                    'This will delete ALL data including documents, websites, YouTube videos, AND memories. Are you absolutely sure?';
+            } else {
+                document.getElementById('clearAllMessage').textContent = 
+                    'This will delete all documents, websites, and YouTube videos (but keep memories). Are you sure?';
+            }
+            
+            document.getElementById('confirmClearCheckbox').checked = false;
+            document.getElementById('confirmClearBtn').disabled = true;
+            document.getElementById('clearAllModal').classList.add('active');
+        }
+
+        function closeClearAllModal() {
+            document.getElementById('clearAllModal').classList.remove('active');
+        }
+
+        // Enable/disable confirm button based on checkbox
+        document.getElementById('confirmClearCheckbox').addEventListener('change', function() {
+            document.getElementById('confirmClearBtn').disabled = !this.checked;
+        });
+
+        async function confirmClearAll() {
+            closeClearAllModal();
+            
+            const loadingOverlay = document.createElement('div');
+            loadingOverlay.id = 'loadingOverlay';
+            loadingOverlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            loadingOverlay.innerHTML = `
+                <div class="bg-white rounded-lg p-6 text-center">
+                    <i class="fas fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i>
+                    <p class="text-lg font-semibold">Clearing Knowledge Base...</p>
+                    <p class="text-sm text-gray-500">This may take a moment</p>
+                </div>
+            `;
+            document.body.appendChild(loadingOverlay);
+            
+            try {
+                const url = `${API_BASE}/admin/clear-all?include_memories=${pendingClearIncludeMemories}&include_conversations=false`;
+                const response = await fetch(url, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                document.body.removeChild(loadingOverlay);
+                
+                if (data.success) {
+                    alert(`✅ Knowledge Base Cleared!\n\n` +
+                          `Vectors deleted: ${data.details.vectors_deleted}\n` +
+                          `Documents deleted: ${data.details.documents_deleted}\n` +
+                          `BM25 cleared: ${data.details.bm25_cleared}\n` +
+                          `Memories deleted: ${data.details.memories_deleted}`);
+                    refreshData();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                document.body.removeChild(document.getElementById('loadingOverlay'));
+                alert('Error clearing knowledge base: ' + error.message);
+            }
+        }
+
         // Tab switching
         function showTab(tabName) {
             // Hide all content
@@ -441,6 +561,12 @@
         document.getElementById('chunksModal').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeModal();
+            }
+        });
+
+        document.getElementById('clearAllModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeClearAllModal();
             }
         });
 

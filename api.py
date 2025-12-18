@@ -436,7 +436,12 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
                 if score >= display_min_score:
                     source_url = metadata.get('source', 'Unknown')
                     source_title = metadata.get('title', metadata.get('filename', source_url))
+                    domain = metadata.get('domain', '')
                     file_path = metadata.get('file_path', '')
+                    
+                    # Add domain to title for clarity
+                    if domain and domain.lower() not in source_title.lower():
+                        source_title = f"{domain} - {source_title}"
                     
                     download_url = None
                     if file_path and os.path.exists(file_path):
@@ -548,25 +553,70 @@ JSON only:"""
 
 # ==================== Ingestion with Semantic Chunking ====================
 
+def extract_domain_name(url: str) -> str:
+    """Extract readable domain name from URL (e.g., docs.oracle.com -> Oracle)"""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        
+        # Extract main company name
+        domain_parts = domain.replace('www.', '').split('.')
+        
+        # Common patterns
+        company_mappings = {
+            'oracle': 'Oracle',
+            'boomi': 'Boomi',
+            'opentext': 'OpenText',
+            'microsoft': 'Microsoft',
+            'google': 'Google',
+            'aws': 'AWS',
+            'amazon': 'Amazon',
+            'salesforce': 'Salesforce',
+            'ibm': 'IBM',
+            'sap': 'SAP',
+        }
+        
+        for part in domain_parts:
+            for key, value in company_mappings.items():
+                if key in part:
+                    return value
+        
+        # Default: capitalize first meaningful part
+        for part in domain_parts:
+            if part not in ['docs', 'www', 'help', 'support', 'com', 'org', 'net', 'io']:
+                return part.capitalize()
+        
+        return ""
+    except:
+        return ""
+
 def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: str, file_path: str, metadata: dict):
     parent_id = f"parent_{uuid.uuid4().hex[:12]}"
+    
+    # Extract domain/company name for better search
+    domain_name = extract_domain_name(source) if doc_type == "website" else ""
     
     save_full_document(parent_id, full_text, {
         "source": source,
         "type": doc_type,
         "file_path": file_path,
         "title": metadata.get("title", source),
-        "summary": metadata.get("summary", "")
+        "summary": metadata.get("summary", ""),
+        "domain": domain_name
     })
     
     chunks = smart_chunk_text(full_text)
     
-    print(f"📦 Created {len(chunks)} semantic chunks for {source}")
+    print(f"📦 Created {len(chunks)} semantic chunks for {source} (domain: {domain_name})")
     
     metadata_list = []
     for i, chunk in enumerate(chunks):
+        # Add domain name to chunk text for better semantic search
+        enhanced_text = f"{domain_name} - {chunk}" if domain_name else chunk
+        
         chunk_metadata = {
-            "text": chunk,
+            "text": enhanced_text,
             "source": source,
             "type": doc_type,
             "filename": source,
@@ -575,7 +625,8 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
             "summary": metadata.get("summary", ""),
             "parent_id": parent_id,
             "chunk_index": i,
-            "chunk_type": "semantic"
+            "chunk_type": "semantic",
+            "domain": domain_name
         }
         
         vector = embeddings.embed_query(chunk)
@@ -596,6 +647,69 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
 @app.get("/")
 def root():
     return {"message": "🤖 RAG Agent API v2.3 - Search All Sources Including Memory"}
+
+@app.get("/debug-search")
+def debug_search(q: str):
+    """Debug endpoint to see raw search results"""
+    
+    # 1. Raw Semantic Search from Pinecone
+    query_vector = embeddings.embed_query(q)
+    semantic_results = index.query(
+        vector=query_vector,
+        top_k=10,
+        include_metadata=True
+    )
+    
+    semantic_docs = []
+    for match in semantic_results['matches']:
+        semantic_docs.append({
+            "id": match['id'],
+            "score": round(match['score'], 4),
+            "title": match['metadata'].get('title', 'N/A'),
+            "type": match['metadata'].get('type', 'N/A'),
+            "source": match['metadata'].get('source', 'N/A')[:50],
+            "text_preview": match['metadata'].get('text', '')[:100] + "..."
+        })
+    
+    # 2. BM25 Results
+    bm25_results = search_bm25(q, top_k=10)
+    bm25_docs = []
+    for result in bm25_results:
+        bm25_docs.append({
+            "score": round(result['score'], 4),
+            "title": result['metadata'].get('title', 'N/A'),
+            "type": result['metadata'].get('type', 'N/A'),
+        })
+    
+    # 3. Hybrid Results
+    hybrid_results = hybrid_search(q, top_k=10)
+    hybrid_docs = []
+    for doc in hybrid_results:
+        hybrid_docs.append({
+            "score": round(doc['score'], 4),
+            "title": doc['metadata'].get('title', 'N/A'),
+            "type": doc['metadata'].get('type', 'N/A'),
+            "source": doc['metadata'].get('source', 'N/A')[:50],
+        })
+    
+    # 4. After Reranking
+    reranked = rerank_results(q, hybrid_results, top_n=5)
+    reranked_docs = []
+    for doc in reranked:
+        reranked_docs.append({
+            "score": round(doc['score'], 4),
+            "title": doc['metadata'].get('title', 'N/A'),
+            "type": doc['metadata'].get('type', 'N/A'),
+        })
+    
+    return {
+        "query": q,
+        "1_semantic_search": semantic_docs,
+        "2_bm25_search": bm25_docs,
+        "3_hybrid_combined": hybrid_docs,
+        "4_after_reranking": reranked_docs,
+        "display_threshold": 0.30
+    }
 
 @app.get("/frontend")
 def serve_frontend():
@@ -1283,6 +1397,105 @@ def clear_all_memories():
         return {"success": True, "message": f"Deleted {len(memory_ids)} memories"}
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+@app.delete("/admin/clear-all")
+def clear_all_knowledge_base(include_memories: bool = False, include_conversations: bool = False):
+    """
+    Clear entire knowledge base (documents, websites, YouTube).
+    Optionally include memories and conversations.
+    """
+    results = {
+        "vectors_deleted": 0,
+        "documents_deleted": 0,
+        "bm25_cleared": False,
+        "memories_deleted": 0,
+        "conversations_deleted": 0
+    }
+    
+    try:
+        # 1. Delete all vectors from Pinecone (except memories unless specified)
+        try:
+            dummy_vector = embeddings.embed_query("document")
+            
+            if include_memories:
+                # Delete ALL vectors
+                all_results = index.query(
+                    vector=dummy_vector,
+                    top_k=10000,
+                    include_metadata=True
+                )
+                all_ids = [match['id'] for match in all_results['matches']]
+            else:
+                # Delete only non-memory vectors
+                all_results = index.query(
+                    vector=dummy_vector,
+                    top_k=10000,
+                    include_metadata=True
+                )
+                all_ids = [
+                    match['id'] for match in all_results['matches'] 
+                    if match['metadata'].get('type') != 'memory'
+                ]
+            
+            if all_ids:
+                # Delete in batches of 1000
+                for i in range(0, len(all_ids), 1000):
+                    batch = all_ids[i:i+1000]
+                    index.delete(ids=batch)
+                results["vectors_deleted"] = len(all_ids)
+                
+        except Exception as e:
+            print(f"Error deleting vectors: {e}")
+        
+        # 2. Delete local document files
+        try:
+            os.makedirs(DOCUMENTS_FOLDER, exist_ok=True)
+            doc_files = [f for f in os.listdir(DOCUMENTS_FOLDER) if f.endswith('.json')]
+            for f in doc_files:
+                os.remove(os.path.join(DOCUMENTS_FOLDER, f))
+            results["documents_deleted"] = len(doc_files)
+        except Exception as e:
+            print(f"Error deleting documents: {e}")
+        
+        # 3. Clear BM25 index
+        try:
+            bm25_path = BM25_INDEX_FILE
+            if os.path.exists(bm25_path):
+                os.remove(bm25_path)
+            results["bm25_cleared"] = True
+        except Exception as e:
+            print(f"Error clearing BM25: {e}")
+        
+        # 4. Delete uploaded files
+        try:
+            os.makedirs(UPLOADS_FOLDER, exist_ok=True)
+            upload_files = os.listdir(UPLOADS_FOLDER)
+            for f in upload_files:
+                file_path = os.path.join(UPLOADS_FOLDER, f)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+        except Exception as e:
+            print(f"Error deleting uploads: {e}")
+        
+        # 5. Optionally delete conversations
+        if include_conversations:
+            try:
+                os.makedirs(CONVERSATIONS_FOLDER, exist_ok=True)
+                conv_files = [f for f in os.listdir(CONVERSATIONS_FOLDER) if f.endswith('.json')]
+                for f in conv_files:
+                    os.remove(os.path.join(CONVERSATIONS_FOLDER, f))
+                results["conversations_deleted"] = len(conv_files)
+            except Exception as e:
+                print(f"Error deleting conversations: {e}")
+        
+        return {
+            "success": True, 
+            "message": "Knowledge base cleared successfully!",
+            "details": results
+        }
+        
+    except Exception as e:
+        return {"success": False, "message": str(e), "details": results}
 
 @app.get("/admin/stats")
 def get_admin_stats():
