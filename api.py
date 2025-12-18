@@ -2257,21 +2257,32 @@ async def export_to_word(request: ExportRequest):
     def get_image_from_url(img_url):
         """Get image bytes from URL or local path"""
         try:
+            print(f"🖼️ Trying to load image: {img_url}")
+            print(f"📁 DOC_IMAGES_FOLDER: {DOC_IMAGES_FOLDER}")
+            
             # Check if it's a local doc-image
             if img_url.startswith('/doc-images/'):
                 filename = img_url.replace('/doc-images/', '')
                 local_path = os.path.join(DOC_IMAGES_FOLDER, filename)
+                print(f"📍 Local path: {local_path}")
+                print(f"✅ File exists: {os.path.exists(local_path)}")
+                
                 if os.path.exists(local_path):
                     with open(local_path, 'rb') as f:
-                        return io.BytesIO(f.read())
+                        data = f.read()
+                    print(f"📦 Loaded {len(data)} bytes")
+                    return io.BytesIO(data)
+                else:
+                    print(f"❌ File not found at {local_path}")
             
             # Otherwise try to fetch from URL
+            print(f"🌐 Trying HTTP fetch for: {img_url}")
             headers = {'User-Agent': 'Mozilla/5.0'}
             response = requests.get(img_url, headers=headers, timeout=10)
             if response.status_code == 200:
                 return io.BytesIO(response.content)
         except Exception as e:
-            print(f"Error loading image {img_url}: {e}")
+            print(f"❌ Error loading image {img_url}: {e}")
         return None
     
     for line in lines:
@@ -2634,14 +2645,52 @@ def debug_doc_images():
             images.append({
                 "filename": filename,
                 "url": f"/doc-images/{filename}",
-                "size_kb": round(os.path.getsize(filepath) / 1024, 2)
+                "size_kb": round(os.path.getsize(filepath) / 1024, 2),
+                "full_path": filepath,
+                "exists": os.path.exists(filepath)
             })
     
     return {
         "folder": DOC_IMAGES_FOLDER,
+        "folder_exists": os.path.exists(DOC_IMAGES_FOLDER),
         "total_images": len(images),
         "images": images
     }
+
+@app.get("/debug/test-image-load")
+def debug_test_image_load(img_url: str):
+    """Test if an image can be loaded for export"""
+    import io
+    
+    result = {
+        "url": img_url,
+        "is_local": img_url.startswith('/doc-images/'),
+        "doc_images_folder": DOC_IMAGES_FOLDER
+    }
+    
+    try:
+        if img_url.startswith('/doc-images/'):
+            filename = img_url.replace('/doc-images/', '')
+            local_path = os.path.join(DOC_IMAGES_FOLDER, filename)
+            result["local_path"] = local_path
+            result["file_exists"] = os.path.exists(local_path)
+            
+            if os.path.exists(local_path):
+                with open(local_path, 'rb') as f:
+                    data = f.read()
+                result["file_size_kb"] = round(len(data) / 1024, 2)
+                result["success"] = True
+            else:
+                result["success"] = False
+                result["error"] = "File not found"
+        else:
+            result["success"] = False
+            result["error"] = "Not a local doc-image URL"
+    except Exception as e:
+        result["success"] = False
+        result["error"] = str(e)
+    
+    return result
 
 @app.get("/debug/document-images/{doc_title}")
 def debug_document_images(doc_title: str):
