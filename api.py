@@ -1061,11 +1061,12 @@ def chat(request: ChatRequest):
     # Add image info to prompt with full URLs for inline embedding
     image_info = ""
     if images:
-        image_info = "\n\nAvailable Images (USE THESE INLINE in your response where relevant):\n"
+        image_info = "\n\n=== AVAILABLE IMAGES (MUST USE THESE EXACT URLs) ===\n"
         for i, img in enumerate(images[:10], 1):
             alt = img.get('alt', '') or img.get('context', f'Image {i}')
             url = img.get('url', '')
-            image_info += f"- [{alt[:100]}]({url})\n"
+            image_info += f"Image {i}: Description=\"{alt[:80]}\" | URL=\"{url}\"\n"
+        image_info += "=== END IMAGES ===\n"
     
     prompt = f"""You are a friendly and helpful AI assistant.
 
@@ -1088,9 +1089,10 @@ Instructions:
 - NEVER list sources in text - shown separately
 - Be thorough - include ALL relevant details
 - When asked to list ALL items, include EVERY item found
-- **IMPORTANT: If images are available, INSERT them INLINE using markdown format: ![description](url)**
-- Place each image RIGHT AFTER the step or content it illustrates
-- Example: After explaining step 3, add the image that shows step 3
+- **CRITICAL IMAGE RULE**: When images are listed above, you MUST include them using EXACTLY the URLs provided
+- Format: ![description](EXACT_URL_FROM_LIST)
+- NEVER invent or use placeholder URLs like "placeholder.com" - only use URLs from the AVAILABLE IMAGES list above
+- Place relevant images after the steps they illustrate
 
 Response:"""
     
@@ -2138,11 +2140,12 @@ async def generate_stream(question: str, user_id: str, conversation_id: str):
     # Add image info to prompt with full URLs for inline embedding
     image_info = ""
     if images:
-        image_info = "\n\nAvailable Images (USE THESE INLINE in your response where relevant):\n"
+        image_info = "\n\n=== AVAILABLE IMAGES (MUST USE THESE EXACT URLs) ===\n"
         for i, img in enumerate(images[:10], 1):
             alt = img.get('alt', '') or img.get('context', f'Image {i}')
             url = img.get('url', '')
-            image_info += f"- [{alt[:100]}]({url})\n"
+            image_info += f"Image {i}: Description=\"{alt[:80]}\" | URL=\"{url}\"\n"
+        image_info += "=== END IMAGES ===\n"
     
     # Build prompt
     prompt = f"""You are a friendly and helpful AI assistant.
@@ -2166,9 +2169,10 @@ Instructions:
 - NEVER list sources in text - shown separately
 - Be thorough - include ALL relevant details
 - When asked to list ALL items, include EVERY item found
-- **IMPORTANT: If images are available, INSERT them INLINE using markdown format: ![description](url)**
-- Place each image RIGHT AFTER the step or content it illustrates
-- Example: After explaining step 3, add the image that shows step 3
+- **CRITICAL IMAGE RULE**: When images are listed above, you MUST include them using EXACTLY the URLs provided
+- Format: ![description](EXACT_URL_FROM_LIST)
+- NEVER invent or use placeholder URLs like "placeholder.com" - only use URLs from the AVAILABLE IMAGES list above
+- Place relevant images after the steps they illustrate
 
 Response:"""
     
@@ -2567,6 +2571,45 @@ def debug_search(query: str):
             for r in reranked
         ]
     }
+
+@app.get("/debug/doc-images")
+def debug_doc_images():
+    """Debug endpoint to list all extracted document images"""
+    images = []
+    if os.path.exists(DOC_IMAGES_FOLDER):
+        for filename in os.listdir(DOC_IMAGES_FOLDER):
+            filepath = os.path.join(DOC_IMAGES_FOLDER, filename)
+            images.append({
+                "filename": filename,
+                "url": f"/doc-images/{filename}",
+                "size_kb": round(os.path.getsize(filepath) / 1024, 2)
+            })
+    
+    return {
+        "folder": DOC_IMAGES_FOLDER,
+        "total_images": len(images),
+        "images": images
+    }
+
+@app.get("/debug/document-images/{doc_title}")
+def debug_document_images(doc_title: str):
+    """Debug endpoint to see images for a specific document"""
+    # Load all full documents and find matching one
+    documents_file = os.path.join(DOCUMENTS_FOLDER, "full_documents.json")
+    if os.path.exists(documents_file):
+        with open(documents_file, "r") as f:
+            docs = json.load(f)
+        
+        for doc in docs:
+            title = doc.get('metadata', {}).get('title', '')
+            if doc_title.lower() in title.lower():
+                return {
+                    "title": title,
+                    "images_count": len(doc.get('images', [])),
+                    "images": doc.get('images', [])
+                }
+    
+    return {"error": f"Document '{doc_title}' not found"}
 
 # ==================== Run Server ====================
 
