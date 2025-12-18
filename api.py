@@ -1230,12 +1230,26 @@ class RecursiveScrapeResponse(BaseModel):
 
 def extract_links_from_page(url: str, html_content: str, same_path_only: bool = True) -> List[str]:
     """Extract valid links from a page that belong to the same context"""
-    from urllib.parse import urlparse, urljoin
+    from urllib.parse import urlparse, urljoin, unquote
     
     soup = BeautifulSoup(html_content, 'html.parser')
     parsed_base = urlparse(url)
     base_domain = parsed_base.netloc
-    base_path = '/'.join(parsed_base.path.split('/')[:-1]) if parsed_base.path else ''
+    
+    # Get path segments (decode URL encoding)
+    base_path_decoded = unquote(parsed_base.path)
+    base_segments = [s for s in base_path_decoded.split('/') if s]
+    
+    # For same_path_only, match first N segments (more flexible)
+    # e.g., /docs/Atomsphere/Integration/ -> match first 3 segments
+    if len(base_segments) >= 3:
+        match_segments = base_segments[:3]  # Match first 3 path segments
+    elif len(base_segments) >= 2:
+        match_segments = base_segments[:2]
+    else:
+        match_segments = base_segments[:1] if base_segments else []
+    
+    match_path = '/' + '/'.join(match_segments) if match_segments else ''
     
     links = set()
     
@@ -1262,9 +1276,10 @@ def extract_links_from_page(url: str, html_content: str, same_path_only: bool = 
         if any(parsed_url.path.lower().endswith(ext) for ext in ['.pdf', '.zip', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.gif']):
             continue
         
-        # If same_path_only, check if the link starts with the base path
-        if same_path_only:
-            if not parsed_url.path.startswith(base_path):
+        # If same_path_only, check if the link shares the same base path segments
+        if same_path_only and match_path:
+            link_path_decoded = unquote(parsed_url.path)
+            if not link_path_decoded.startswith(match_path):
                 continue
         
         # Clean URL (remove fragments and trailing slashes)
