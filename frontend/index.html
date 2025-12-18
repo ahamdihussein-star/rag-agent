@@ -1016,20 +1016,54 @@
         let currentConversationId = null;
         let isProcessing = false;
 
-        // Custom renderer to handle relative image URLs
-        const renderer = new marked.Renderer();
-        renderer.image = function(href, title, text) {
-            // Convert relative URLs to absolute
-            let imgUrl = href;
-            if (href && href.startsWith('/')) {
-                imgUrl = API_URL + href;
+        // Custom renderer to handle relative image URLs (compatible with marked.js v4+)
+        const renderer = {
+            image(token) {
+                // Handle both old format (href, title, text) and new format (token object)
+                let href, title, text;
+                if (typeof token === 'object') {
+                    href = token.href;
+                    title = token.title;
+                    text = token.text;
+                } else {
+                    href = token;
+                    title = arguments[1];
+                    text = arguments[2];
+                }
+                
+                // Convert relative URLs to absolute
+                let imgUrl = href || '';
+                if (imgUrl.startsWith('/')) {
+                    imgUrl = window.location.origin + imgUrl;
+                }
+                
+                const titleAttr = title ? ` title="${title}"` : '';
+                const altText = text || title || 'Image';
+                return `<img src="${imgUrl}" alt="${altText}"${titleAttr} loading="lazy" style="max-width:100%; border-radius:10px; margin:15px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.3); cursor:pointer;" onclick="openImageModal('${imgUrl}', '${altText.replace(/'/g, "\\'")}')">`;
             }
-            const titleAttr = title ? ` title="${title}"` : '';
-            const altText = text || title || 'Image';
-            return `<img src="${imgUrl}" alt="${altText}"${titleAttr} loading="lazy" onerror="this.style.display='none'">`;
         };
         
-        marked.setOptions({ breaks: true, gfm: true, renderer: renderer });
+        marked.use({ renderer });
+        marked.setOptions({ breaks: true, gfm: true });
+
+        // Helper function to convert markdown images that might not be rendered
+        function processMarkdownImages(html) {
+            // Find any remaining markdown image syntax and convert it
+            const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+            return html.replace(imgRegex, (match, alt, url) => {
+                let imgUrl = url;
+                if (url.startsWith('/')) {
+                    imgUrl = window.location.origin + url;
+                }
+                return `<img src="${imgUrl}" alt="${alt || 'Image'}" loading="lazy" style="max-width:100%; border-radius:10px; margin:15px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.3); cursor:pointer;" onclick="openImageModal('${imgUrl}', '${(alt || 'Image').replace(/'/g, "\\'")}')">`;
+            });
+        }
+
+        // Wrapper for marked.parse that also processes images
+        function parseMarkdown(content) {
+            let html = marked.parse(content);
+            return processMarkdownImages(html);
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             loadStats();
@@ -1132,7 +1166,7 @@
                     if (msg.role === 'user') {
                         addMessage(msg.content, 'user');
                     } else {
-                        let formattedAnswer = marked.parse(msg.content);
+                        let formattedAnswer = parseMarkdown(msg.content);
                         if (msg.sources && msg.sources.length > 0) {
                             formattedAnswer += buildSourcesHtml(msg.sources);
                         }
@@ -1248,11 +1282,13 @@
                             fullContent += data.data;
                             const isRtl = isArabic(fullContent);
                             contentDiv.className = `message-content streaming ${isRtl ? 'rtl' : ''}`;
-                            contentDiv.innerHTML = marked.parse(fullContent);
+                            contentDiv.innerHTML = parseMarkdown(fullContent);
                             messagesDiv.scrollTop = messagesDiv.scrollHeight;
                         } else if (data.type === 'done') {
                             eventSource.close();
                             contentDiv.classList.remove('streaming');
+                            // Final parse with image processing
+                            contentDiv.innerHTML = parseMarkdown(fullContent);
                             if (sources.length > 0) {
                                 contentDiv.innerHTML += buildSourcesHtml(sources, fullContent);
                             }
@@ -1307,7 +1343,7 @@
 
                 currentConversationId = data.conversation_id;
 
-                let formattedAnswer = marked.parse(data.answer);
+                let formattedAnswer = parseMarkdown(data.answer);
                 if (data.sources && data.sources.length > 0) {
                     formattedAnswer += buildSourcesHtml(data.sources);
                 }
