@@ -2255,10 +2255,14 @@ async def export_to_word(request: ExportRequest):
     img_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
     
     def get_image_from_url(img_url):
-        """Get image bytes from URL or local path"""
+        """Get image bytes from URL or local path, convert to PNG for compatibility"""
+        from PIL import Image as PILImage
+        
         try:
             print(f"🖼️ Trying to load image: {img_url}")
             print(f"📁 DOC_IMAGES_FOLDER: {DOC_IMAGES_FOLDER}")
+            
+            image_data = None
             
             # Check if it's a local doc-image
             if img_url.startswith('/doc-images/'):
@@ -2269,24 +2273,50 @@ async def export_to_word(request: ExportRequest):
                 
                 if os.path.exists(local_path):
                     with open(local_path, 'rb') as f:
-                        data = f.read()
-                    print(f"📦 Loaded {len(data)} bytes")
-                    stream = io.BytesIO(data)
-                    stream.seek(0)  # Ensure stream is at beginning
-                    return stream
+                        image_data = f.read()
+                    print(f"📦 Loaded {len(image_data)} bytes")
                 else:
                     print(f"❌ File not found at {local_path}")
+                    return None
+            else:
+                # Try to fetch from URL
+                print(f"🌐 Trying HTTP fetch for: {img_url}")
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                response = requests.get(img_url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    image_data = response.content
+                else:
+                    return None
             
-            # Otherwise try to fetch from URL
-            print(f"🌐 Trying HTTP fetch for: {img_url}")
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(img_url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                stream = io.BytesIO(response.content)
-                stream.seek(0)
-                return stream
+            if image_data:
+                # Convert to PNG using PIL for compatibility with python-docx
+                print(f"🔄 Converting image to PNG...")
+                pil_img = PILImage.open(io.BytesIO(image_data))
+                
+                # Convert to RGB if necessary
+                if pil_img.mode in ('RGBA', 'LA', 'P'):
+                    background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
+                    if pil_img.mode == 'P':
+                        pil_img = pil_img.convert('RGBA')
+                    if pil_img.mode == 'RGBA':
+                        background.paste(pil_img, mask=pil_img.split()[-1])
+                    else:
+                        background.paste(pil_img)
+                    pil_img = background
+                elif pil_img.mode != 'RGB':
+                    pil_img = pil_img.convert('RGB')
+                
+                # Save as PNG to BytesIO
+                png_buffer = io.BytesIO()
+                pil_img.save(png_buffer, format='PNG')
+                png_buffer.seek(0)
+                print(f"✅ Converted to PNG: {png_buffer.getbuffer().nbytes} bytes")
+                return png_buffer
+                
         except Exception as e:
-            print(f"❌ Error loading image {img_url}: {e}")
+            print(f"❌ Error loading/converting image {img_url}: {e}")
+            import traceback
+            traceback.print_exc()
         return None
     
     for line in lines:
