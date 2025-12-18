@@ -2271,7 +2271,9 @@ async def export_to_word(request: ExportRequest):
                     with open(local_path, 'rb') as f:
                         data = f.read()
                     print(f"📦 Loaded {len(data)} bytes")
-                    return io.BytesIO(data)
+                    stream = io.BytesIO(data)
+                    stream.seek(0)  # Ensure stream is at beginning
+                    return stream
                 else:
                     print(f"❌ File not found at {local_path}")
             
@@ -2280,7 +2282,9 @@ async def export_to_word(request: ExportRequest):
             headers = {'User-Agent': 'Mozilla/5.0'}
             response = requests.get(img_url, headers=headers, timeout=10)
             if response.status_code == 200:
-                return io.BytesIO(response.content)
+                stream = io.BytesIO(response.content)
+                stream.seek(0)
+                return stream
         except Exception as e:
             print(f"❌ Error loading image {img_url}: {e}")
         return None
@@ -2315,7 +2319,9 @@ async def export_to_word(request: ExportRequest):
                 image_stream = get_image_from_url(img_url)
                 if image_stream:
                     try:
+                        print(f"📎 Adding picture to Word doc: {img_url}")
                         doc.add_picture(image_stream, width=Inches(5))
+                        print(f"✅ Picture added successfully!")
                         
                         # Add caption
                         if alt_text:
@@ -2324,8 +2330,12 @@ async def export_to_word(request: ExportRequest):
                             cap_para.runs[0].font.size = Pt(10)
                             cap_para.runs[0].font.italic = True
                     except Exception as e:
+                        print(f"❌ Error adding picture: {e}")
+                        import traceback
+                        traceback.print_exc()
                         doc.add_paragraph(f"[Image: {alt_text or 'Could not load'}]")
                 else:
+                    print(f"❌ No image stream for: {img_url}")
                     doc.add_paragraph(f"[Image: {alt_text or 'Could not load'}]")
                 
                 last_end = match.end()
