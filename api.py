@@ -2594,22 +2594,66 @@ def debug_doc_images():
 @app.get("/debug/document-images/{doc_title}")
 def debug_document_images(doc_title: str):
     """Debug endpoint to see images for a specific document"""
-    # Load all full documents and find matching one
-    documents_file = os.path.join(DOCUMENTS_FOLDER, "full_documents.json")
-    if os.path.exists(documents_file):
-        with open(documents_file, "r") as f:
-            docs = json.load(f)
-        
-        for doc in docs:
-            title = doc.get('metadata', {}).get('title', '')
-            if doc_title.lower() in title.lower():
-                return {
-                    "title": title,
-                    "images_count": len(doc.get('images', [])),
-                    "images": doc.get('images', [])
-                }
+    # Search in individual document files
+    if os.path.exists(DOCUMENTS_FOLDER):
+        for filename in os.listdir(DOCUMENTS_FOLDER):
+            if filename.endswith('.json') and filename.startswith('parent_'):
+                filepath = os.path.join(DOCUMENTS_FOLDER, filename)
+                try:
+                    with open(filepath, "r", encoding='utf-8') as f:
+                        doc = json.load(f)
+                    
+                    title = doc.get('metadata', {}).get('title', '')
+                    if doc_title.lower() in title.lower():
+                        return {
+                            "doc_id": doc.get('id'),
+                            "title": title,
+                            "images_count": len(doc.get('images', [])),
+                            "images": doc.get('images', [])
+                        }
+                except Exception as e:
+                    continue
     
     return {"error": f"Document '{doc_title}' not found"}
+
+@app.get("/debug/all-documents")
+def debug_all_documents():
+    """Debug endpoint to list all documents with their image counts"""
+    documents = []
+    if os.path.exists(DOCUMENTS_FOLDER):
+        for filename in os.listdir(DOCUMENTS_FOLDER):
+            if filename.endswith('.json') and filename.startswith('parent_'):
+                filepath = os.path.join(DOCUMENTS_FOLDER, filename)
+                try:
+                    with open(filepath, "r", encoding='utf-8') as f:
+                        doc = json.load(f)
+                    
+                    documents.append({
+                        "id": doc.get('id'),
+                        "title": doc.get('metadata', {}).get('title', 'Unknown'),
+                        "type": doc.get('metadata', {}).get('type', 'Unknown'),
+                        "images_count": len(doc.get('images', []))
+                    })
+                except Exception as e:
+                    continue
+    
+    return {
+        "total_documents": len(documents),
+        "documents": documents
+    }
+
+@app.get("/debug/prompt")
+def debug_prompt(query: str):
+    """Debug endpoint to see what images are being passed to the LLM"""
+    doc_context, sources, images = get_document_context_with_sources(query)
+    
+    return {
+        "query": query,
+        "sources_count": len(sources),
+        "images_count": len(images),
+        "images": images,
+        "context_preview": doc_context[:500] if doc_context else "No context"
+    }
 
 # ==================== Run Server ====================
 
