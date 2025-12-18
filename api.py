@@ -48,11 +48,12 @@ fallback_splitter = RecursiveCharacterTextSplitter(
     chunk_overlap=200
 )
 
-# Folders
-UPLOADS_FOLDER = "uploads"
-CONVERSATIONS_FOLDER = "conversations"
-DOCUMENTS_FOLDER = "documents"
-BM25_INDEX_FILE = "bm25_index.json"
+# Folders - Use Railway Volume if available, otherwise local
+DATA_DIR = "/app/data" if os.path.exists("/app/data") else "."
+UPLOADS_FOLDER = os.path.join(DATA_DIR, "uploads")
+CONVERSATIONS_FOLDER = os.path.join(DATA_DIR, "conversations")
+DOCUMENTS_FOLDER = os.path.join(DATA_DIR, "documents")
+BM25_INDEX_FILE = os.path.join(DATA_DIR, "bm25_index.json")
 
 os.makedirs(UPLOADS_FOLDER, exist_ok=True)
 os.makedirs(CONVERSATIONS_FOLDER, exist_ok=True)
