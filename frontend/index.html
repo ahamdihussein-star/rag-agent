@@ -759,6 +759,17 @@
                         </div>
                         <input type="file" id="file-input" accept=".pdf,.txt,.docx,.xlsx,.xls,.pptx,.mp4,.mp3,.wav,.m4a,.mov,.avi,.webm,.jpg,.jpeg,.png,.gif,.webp" onchange="uploadFile(this.files[0])">
                         <div class="status" id="upload-status"></div>
+                        
+                        <!-- Progress Bar for Upload -->
+                        <div id="upload-progress-container" style="display: none; margin-top: 10px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span id="upload-progress-text" style="font-size: 12px; color: #00d9ff;">Uploading...</span>
+                                <span id="upload-progress-percent" style="font-size: 12px; color: #00ff88;">0%</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.1); border-radius: 10px; height: 8px; overflow: hidden;">
+                                <div id="upload-progress-bar" style="background: linear-gradient(90deg, #00d9ff, #00ff88); height: 100%; width: 0%; transition: width 0.3s ease; border-radius: 10px;"></div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="panel">
@@ -804,6 +815,17 @@
                         
                         <div class="status" id="website-status"></div>
                         
+                        <!-- Progress Bar -->
+                        <div id="website-progress-container" style="display: none; margin-top: 10px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span id="website-progress-text" style="font-size: 12px; color: #00d9ff;">Starting...</span>
+                                <span id="website-progress-percent" style="font-size: 12px; color: #00ff88;">0%</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.1); border-radius: 10px; height: 8px; overflow: hidden;">
+                                <div id="website-progress-bar" style="background: linear-gradient(90deg, #00d9ff, #00ff88); height: 100%; width: 0%; transition: width 0.3s ease; border-radius: 10px;"></div>
+                            </div>
+                        </div>
+                        
                         <!-- Pages scraped list -->
                         <div id="pages-scraped-container" style="display: none; margin-top: 10px; max-height: 150px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;">
                             <div style="font-size: 12px; color: #10b981; margin-bottom: 8px;">📄 Pages Scraped:</div>
@@ -818,6 +840,17 @@
                             <button class="add-btn" onclick="addYouTube()">Add</button>
                         </div>
                         <div class="status" id="youtube-status"></div>
+                        
+                        <!-- Progress Bar for YouTube -->
+                        <div id="youtube-progress-container" style="display: none; margin-top: 10px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span id="youtube-progress-text" style="font-size: 12px; color: #00d9ff;">Starting...</span>
+                                <span id="youtube-progress-percent" style="font-size: 12px; color: #00ff88;">0%</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.1); border-radius: 10px; height: 8px; overflow: hidden;">
+                                <div id="youtube-progress-bar" style="background: linear-gradient(90deg, #00d9ff, #00ff88); height: 100%; width: 0%; transition: width 0.3s ease; border-radius: 10px;"></div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="panel">
@@ -1192,21 +1225,89 @@
         async function uploadFile(file) {
             if (!file) return;
             const statusDiv = document.getElementById('upload-status');
+            const progressContainer = document.getElementById('upload-progress-container');
+            const progressBar = document.getElementById('upload-progress-bar');
+            const progressText = document.getElementById('upload-progress-text');
+            const progressPercent = document.getElementById('upload-progress-percent');
+            
+            // Show progress bar
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = `Uploading ${file.name}...`;
+            progressPercent.textContent = '0%';
             statusDiv.className = 'status loading';
-            statusDiv.textContent = `Uploading ${file.name}...`;
+            statusDiv.textContent = '';
 
             const formData = new FormData();
             formData.append('file', file);
 
             try {
-                const response = await fetch(`${API_URL}/upload`, { method: 'POST', body: formData });
-                const data = await response.json();
-                statusDiv.className = data.success ? 'status success' : 'status error';
-                statusDiv.textContent = data.success ? `✅ ${data.message}` : `❌ ${data.message}`;
-                if (data.success) { loadStats(); loadFiles(); }
+                // Use XMLHttpRequest for upload progress
+                const xhr = new XMLHttpRequest();
+                
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const uploadPercent = Math.round((e.loaded / e.total) * 50); // 0-50% for upload
+                        progressBar.style.width = uploadPercent + '%';
+                        progressPercent.textContent = uploadPercent + '%';
+                        progressText.textContent = `Uploading ${file.name}...`;
+                    }
+                });
+                
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        // Upload complete, now processing
+                        progressBar.style.width = '50%';
+                        progressPercent.textContent = '50%';
+                        progressText.textContent = 'Processing and creating embeddings...';
+                        
+                        // Simulate processing progress
+                        let progress = 50;
+                        const interval = setInterval(() => {
+                            progress += 5;
+                            if (progress <= 95) {
+                                progressBar.style.width = progress + '%';
+                                progressPercent.textContent = progress + '%';
+                            }
+                        }, 500);
+                        
+                        const data = JSON.parse(xhr.responseText);
+                        
+                        clearInterval(interval);
+                        progressBar.style.width = '100%';
+                        progressPercent.textContent = '100%';
+                        progressText.textContent = '✅ Complete!';
+                        statusDiv.className = data.success ? 'status success' : 'status error';
+                        statusDiv.textContent = data.success ? `✅ ${data.message}` : `❌ ${data.message}`;
+                        
+                        if (data.success) { 
+                            loadStats(); 
+                            loadFiles(); 
+                        }
+                        
+                        setTimeout(() => {
+                            progressContainer.style.display = 'none';
+                        }, 3000);
+                    } else {
+                        statusDiv.className = 'status error';
+                        statusDiv.textContent = '❌ Upload failed';
+                        progressContainer.style.display = 'none';
+                    }
+                });
+                
+                xhr.addEventListener('error', () => {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = '❌ Upload failed';
+                    progressContainer.style.display = 'none';
+                });
+                
+                xhr.open('POST', `${API_URL}/upload`);
+                xhr.send(formData);
+                
             } catch (error) {
                 statusDiv.className = 'status error';
                 statusDiv.textContent = '❌ Upload failed';
+                progressContainer.style.display = 'none';
             }
         }
 
@@ -1217,66 +1318,134 @@
             const isRecursive = document.getElementById('recursive-scrape').checked;
             const pagesContainer = document.getElementById('pages-scraped-container');
             const pagesList = document.getElementById('pages-scraped-list');
+            const progressContainer = document.getElementById('website-progress-container');
+            const progressBar = document.getElementById('website-progress-bar');
+            const progressText = document.getElementById('website-progress-text');
+            const progressPercent = document.getElementById('website-progress-percent');
             
             if (!url) return;
 
             // Hide pages list initially
             pagesContainer.style.display = 'none';
             pagesList.innerHTML = '';
+            
+            // Show progress bar
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Starting...';
+            progressPercent.textContent = '0%';
+            statusDiv.className = 'status loading';
+            statusDiv.textContent = '';
 
             if (isRecursive) {
-                // Recursive scraping
+                // Recursive scraping with streaming
                 const maxDepth = parseInt(document.getElementById('max-depth').value);
                 const maxPages = parseInt(document.getElementById('max-pages').value);
                 const samePathOnly = document.getElementById('same-path-only').checked;
                 
-                statusDiv.className = 'status loading';
-                statusDiv.textContent = `🔄 Recursively scraping (max ${maxPages} pages)... This may take a while`;
+                statusDiv.textContent = `🔄 Recursively scraping (max ${maxPages} pages)...`;
 
                 try {
-                    const response = await fetch(`${API_URL}/scrape-recursive`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            url, 
-                            max_depth: maxDepth, 
-                            max_pages: maxPages,
-                            same_path_only: samePathOnly 
-                        }),
-                    });
-                    const data = await response.json();
-                    statusDiv.className = data.success ? 'status success' : 'status error';
-                    statusDiv.textContent = data.success ? `✅ ${data.message}` : `❌ ${data.message}`;
+                    const eventSource = new EventSource(
+                        `${API_URL}/scrape-recursive/stream?url=${encodeURIComponent(url)}&max_depth=${maxDepth}&max_pages=${maxPages}&same_path_only=${samePathOnly}`
+                    );
                     
-                    // Show scraped pages
-                    if (data.success && data.pages_scraped && data.pages_scraped.length > 0) {
-                        pagesContainer.style.display = 'block';
-                        pagesList.innerHTML = data.pages_scraped.map(p => `<div style="padding: 2px 0; word-break: break-all;">• ${p}</div>`).join('');
-                    }
+                    const scrapedPages = [];
                     
-                    if (data.success) { input.value = ''; loadStats(); }
+                    eventSource.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === 'progress') {
+                            progressBar.style.width = data.percent + '%';
+                            progressPercent.textContent = data.percent + '%';
+                            progressText.textContent = data.message;
+                            
+                            // Add page to list if it's a page_done event
+                            if (data.step === 'page_done' && data.page_url) {
+                                scrapedPages.push(data.page_url);
+                                pagesContainer.style.display = 'block';
+                                pagesList.innerHTML = scrapedPages.map(p => `<div style="padding: 2px 0; word-break: break-all;">• ${p}</div>`).join('');
+                            }
+                        } else if (data.type === 'done') {
+                            progressBar.style.width = '100%';
+                            progressPercent.textContent = '100%';
+                            progressText.textContent = '✅ Complete!';
+                            statusDiv.className = 'status success';
+                            statusDiv.textContent = data.message;
+                            input.value = '';
+                            loadStats();
+                            eventSource.close();
+                            
+                            // Hide progress after 3 seconds
+                            setTimeout(() => {
+                                progressContainer.style.display = 'none';
+                            }, 3000);
+                        } else if (data.type === 'error') {
+                            statusDiv.className = 'status error';
+                            statusDiv.textContent = '❌ ' + data.message;
+                            progressContainer.style.display = 'none';
+                            eventSource.close();
+                        }
+                    };
+                    
+                    eventSource.onerror = () => {
+                        statusDiv.className = 'status error';
+                        statusDiv.textContent = '❌ Connection error';
+                        progressContainer.style.display = 'none';
+                        eventSource.close();
+                    };
+                    
                 } catch (error) {
                     statusDiv.className = 'status error';
                     statusDiv.textContent = '❌ Failed to scrape recursively';
+                    progressContainer.style.display = 'none';
                 }
             } else {
-                // Single page scraping (original behavior)
-                statusDiv.className = 'status loading';
+                // Single page scraping with streaming
                 statusDiv.textContent = 'Scraping...';
 
                 try {
-                    const response = await fetch(`${API_URL}/scrape`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url }),
-                    });
-                    const data = await response.json();
-                    statusDiv.className = data.success ? 'status success' : 'status error';
-                    statusDiv.textContent = data.success ? `✅ ${data.message}` : `❌ ${data.message}`;
-                    if (data.success) { input.value = ''; loadStats(); }
+                    const eventSource = new EventSource(`${API_URL}/scrape/stream?url=${encodeURIComponent(url)}`);
+                    
+                    eventSource.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === 'progress') {
+                            progressBar.style.width = data.percent + '%';
+                            progressPercent.textContent = data.percent + '%';
+                            progressText.textContent = data.message;
+                        } else if (data.type === 'done') {
+                            progressBar.style.width = '100%';
+                            progressPercent.textContent = '100%';
+                            progressText.textContent = '✅ Complete!';
+                            statusDiv.className = 'status success';
+                            statusDiv.textContent = data.message;
+                            input.value = '';
+                            loadStats();
+                            eventSource.close();
+                            
+                            setTimeout(() => {
+                                progressContainer.style.display = 'none';
+                            }, 3000);
+                        } else if (data.type === 'error') {
+                            statusDiv.className = 'status error';
+                            statusDiv.textContent = '❌ ' + data.message;
+                            progressContainer.style.display = 'none';
+                            eventSource.close();
+                        }
+                    };
+                    
+                    eventSource.onerror = () => {
+                        statusDiv.className = 'status error';
+                        statusDiv.textContent = '❌ Connection error';
+                        progressContainer.style.display = 'none';
+                        eventSource.close();
+                    };
+                    
                 } catch (error) {
                     statusDiv.className = 'status error';
                     statusDiv.textContent = '❌ Failed';
+                    progressContainer.style.display = 'none';
                 }
             }
         }
@@ -1285,24 +1454,63 @@
             const input = document.getElementById('youtube-input');
             const url = input.value.trim();
             const statusDiv = document.getElementById('youtube-status');
+            const progressContainer = document.getElementById('youtube-progress-container');
+            const progressBar = document.getElementById('youtube-progress-bar');
+            const progressText = document.getElementById('youtube-progress-text');
+            const progressPercent = document.getElementById('youtube-progress-percent');
+            
             if (!url) return;
 
+            // Show progress bar
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Starting...';
+            progressPercent.textContent = '0%';
             statusDiv.className = 'status loading';
             statusDiv.textContent = 'Processing...';
 
             try {
-                const response = await fetch(`${API_URL}/youtube`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url }),
-                });
-                const data = await response.json();
-                statusDiv.className = data.success ? 'status success' : 'status error';
-                statusDiv.textContent = data.success ? `✅ ${data.message}` : `❌ ${data.message}`;
-                if (data.success) { input.value = ''; loadStats(); }
+                const eventSource = new EventSource(`${API_URL}/youtube/stream?url=${encodeURIComponent(url)}`);
+                
+                eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'progress') {
+                        progressBar.style.width = data.percent + '%';
+                        progressPercent.textContent = data.percent + '%';
+                        progressText.textContent = data.message;
+                    } else if (data.type === 'done') {
+                        progressBar.style.width = '100%';
+                        progressPercent.textContent = '100%';
+                        progressText.textContent = '✅ Complete!';
+                        statusDiv.className = 'status success';
+                        statusDiv.textContent = data.message;
+                        input.value = '';
+                        loadStats();
+                        eventSource.close();
+                        
+                        setTimeout(() => {
+                            progressContainer.style.display = 'none';
+                        }, 3000);
+                    } else if (data.type === 'error') {
+                        statusDiv.className = 'status error';
+                        statusDiv.textContent = '❌ ' + data.message;
+                        progressContainer.style.display = 'none';
+                        eventSource.close();
+                    }
+                };
+                
+                eventSource.onerror = () => {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = '❌ Connection error';
+                    progressContainer.style.display = 'none';
+                    eventSource.close();
+                };
+                
             } catch (error) {
                 statusDiv.className = 'status error';
                 statusDiv.textContent = '❌ Failed';
+                progressContainer.style.display = 'none';
             }
         }
 

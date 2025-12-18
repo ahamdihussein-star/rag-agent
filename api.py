@@ -646,7 +646,255 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
 
 @app.get("/")
 def root():
-    return {"message": "🤖 RAG Agent API v2.3 - Search All Sources Including Memory"}
+    return {"message": "🤖 RAG Agent API v2.4 - With Progress Tracking"}
+
+# ==================== Progress Streaming Helpers ====================
+
+def progress_event(step: str, percent: int, message: str, **extra):
+    """Create a progress event for SSE"""
+    data = {"type": "progress", "step": step, "percent": percent, "message": message, **extra}
+    return f"data: {json.dumps(data)}\n\n"
+
+def done_event(message: str, chunks: int = 0, **extra):
+    """Create a done event for SSE"""
+    data = {"type": "done", "percent": 100, "message": message, "chunks": chunks, **extra}
+    return f"data: {json.dumps(data)}\n\n"
+
+def error_event(message: str):
+    """Create an error event for SSE"""
+    data = {"type": "error", "message": message}
+    return f"data: {json.dumps(data)}\n\n"
+
+def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: str, metadata: dict):
+    """Generator that yields progress updates during ingestion"""
+    
+    parent_id = f"parent_{uuid.uuid4().hex[:12]}"
+    domain_name = extract_domain_name(source) if doc_type == "website" else ""
+    
+    yield progress_event("saving_doc", 40, "Saving document...")
+    
+    save_full_document(parent_id, full_text, {
+        "source": source,
+        "type": doc_type,
+        "file_path": file_path,
+        "title": metadata.get("title", source),
+        "summary": metadata.get("summary", ""),
+        "domain": domain_name
+    })
+    
+    yield progress_event("chunking", 45, "Creating semantic chunks...")
+    
+    chunks = smart_chunk_text(full_text)
+    total_chunks = len(chunks)
+    
+    yield progress_event("chunking", 50, f"Created {total_chunks} chunks")
+    
+    metadata_list = []
+    for i, chunk in enumerate(chunks):
+        # Calculate progress (50% to 95% for embeddings)
+        embed_progress = 50 + int((i / total_chunks) * 45)
+        yield progress_event("embedding", embed_progress, f"Embedding chunk {i+1}/{total_chunks}...")
+        
+        enhanced_text = f"{domain_name} - {chunk}" if domain_name else chunk
+        
+        chunk_metadata = {
+            "text": enhanced_text,
+            "source": source,
+            "type": doc_type,
+            "filename": source,
+            "file_path": file_path,
+            "title": metadata.get("title", source),
+            "summary": metadata.get("summary", ""),
+            "parent_id": parent_id,
+            "chunk_index": i,
+            "chunk_type": "semantic",
+            "domain": domain_name
+        }
+        
+        vector = embeddings.embed_query(chunk)
+        index.upsert(vectors=[{
+            "id": f"{parent_id}_chunk_{i}",
+            "values": vector,
+            "metadata": chunk_metadata
+        }])
+        
+        metadata_list.append(chunk_metadata)
+    
+    yield progress_event("bm25", 97, "Adding to BM25 index...")
+    add_to_bm25_index(chunks, metadata_list)
+    
+    yield done_event(f"✅ Ingested with {total_chunks} chunks", total_chunks)
+
+# ==================== Streaming Scrape Endpoint ====================
+
+@app.get("/scrape/stream")
+async def scrape_website_stream(url: str):
+    """Scrape a website with progress streaming"""
+    
+    async def generate():
+        try:
+            yield progress_event("fetching", 10, f"Fetching {url}...")
+            
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            
+            yield progress_event("parsing", 20, "Parsing HTML content...")
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+                element.decompose()
+            
+            text = soup.get_text(separator='\n', strip=True)
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            full_text = '\n'.join(lines)
+            
+            if not full_text:
+                yield error_event("No content found on page")
+                return
+            
+            yield progress_event("metadata", 30, "Extracting metadata...")
+            metadata = extract_metadata(full_text, "website")
+            
+            # Use the progress generator for ingestion
+            for event in ingest_with_progress(full_text, url, "website", "", metadata):
+                yield event
+                
+        except Exception as e:
+            yield error_event(str(e))
+    
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+# ==================== Streaming Recursive Scrape ====================
+
+@app.get("/scrape-recursive/stream")
+async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int = 20, same_path_only: bool = True):
+    """Recursive scrape with progress streaming"""
+    
+    async def generate():
+        try:
+            visited = set()
+            to_visit = [(url, 0)]  # (url, depth)
+            pages_scraped = []
+            total_chunks = 0
+            
+            yield progress_event("starting", 5, f"Starting recursive scrape from {url}")
+            
+            while to_visit and len(visited) < max_pages:
+                current_url, depth = to_visit.pop(0)
+                
+                if current_url in visited:
+                    continue
+                    
+                visited.add(current_url)
+                page_num = len(visited)
+                
+                # Calculate overall progress based on pages
+                overall_progress = min(5 + int((page_num / max_pages) * 90), 95)
+                
+                yield progress_event("scraping", overall_progress, 
+                    f"Scraping page {page_num}/{max_pages}: {current_url[:50]}...",
+                    current_page=page_num, total_pages=max_pages, current_url=current_url)
+                
+                try:
+                    headers = {'User-Agent': 'Mozilla/5.0'}
+                    response = requests.get(current_url, headers=headers, timeout=10)
+                    response.raise_for_status()
+                    
+                    html_content = response.text
+                    
+                    # Extract links if we haven't reached max depth
+                    if depth < max_depth:
+                        new_links = extract_links_from_page(current_url, html_content, same_path_only)
+                        for link in new_links:
+                            if link not in visited and len(to_visit) + len(visited) < max_pages * 2:
+                                to_visit.append((link, depth + 1))
+                    
+                    # Parse content
+                    soup = BeautifulSoup(html_content, 'html.parser')
+                    for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+                        element.decompose()
+                    
+                    text = soup.get_text(separator='\n', strip=True)
+                    lines = [line.strip() for line in text.splitlines() if line.strip()]
+                    full_text = '\n'.join(lines)
+                    
+                    if full_text and len(full_text) > 100:
+                        metadata = extract_metadata(full_text[:3000], "website")
+                        chunks = ingest_document_with_semantic_chunks(full_text, current_url, "website", "", metadata)
+                        total_chunks += chunks
+                        pages_scraped.append(current_url)
+                        
+                        yield progress_event("page_done", overall_progress,
+                            f"✓ Page {page_num}: {chunks} chunks",
+                            page_url=current_url, page_chunks=chunks)
+                    
+                except Exception as e:
+                    yield progress_event("page_error", overall_progress,
+                        f"✗ Failed: {current_url[:30]}... - {str(e)[:30]}")
+                    continue
+            
+            yield done_event(
+                f"✅ Scraped {len(pages_scraped)} pages with {total_chunks} total chunks",
+                total_chunks,
+                pages_scraped=pages_scraped,
+                total_pages=len(pages_scraped)
+            )
+            
+        except Exception as e:
+            yield error_event(str(e))
+    
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+# ==================== Streaming YouTube Endpoint ====================
+
+@app.get("/youtube/stream")
+async def youtube_stream(url: str):
+    """Add YouTube video with progress streaming"""
+    
+    async def generate():
+        try:
+            yield progress_event("fetching", 10, "Fetching YouTube transcript...")
+            
+            from youtube_transcript_api import YouTubeTranscriptApi
+            import re
+            
+            video_id_match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})", url)
+            if not video_id_match:
+                yield error_event("Invalid YouTube URL")
+                return
+            
+            video_id = video_id_match.group(1)
+            
+            yield progress_event("transcript", 30, "Downloading transcript...")
+            
+            try:
+                transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            except Exception as e:
+                yield error_event(f"Could not get transcript: {str(e)}")
+                return
+            
+            yield progress_event("processing", 40, "Processing transcript...")
+            
+            full_text = " ".join([entry['text'] for entry in transcript_list])
+            
+            if not full_text:
+                yield error_event("No transcript content found")
+                return
+            
+            yield progress_event("metadata", 35, "Extracting metadata...")
+            metadata = extract_metadata(full_text, "youtube")
+            
+            # Use the progress generator for ingestion
+            for event in ingest_with_progress(full_text, url, "youtube", "", metadata):
+                yield event
+                
+        except Exception as e:
+            yield error_event(str(e))
+    
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+# ==================== Debug Search Endpoint ====================
 
 @app.get("/debug-search")
 def debug_search(q: str):
