@@ -2254,6 +2254,26 @@ async def export_to_word(request: ExportRequest):
     # Regex to find markdown images: ![alt](url)
     img_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
     
+    def get_image_from_url(img_url):
+        """Get image bytes from URL or local path"""
+        try:
+            # Check if it's a local doc-image
+            if img_url.startswith('/doc-images/'):
+                filename = img_url.replace('/doc-images/', '')
+                local_path = os.path.join(DOC_IMAGES_FOLDER, filename)
+                if os.path.exists(local_path):
+                    with open(local_path, 'rb') as f:
+                        return io.BytesIO(f.read())
+            
+            # Otherwise try to fetch from URL
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(img_url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                return io.BytesIO(response.content)
+        except Exception as e:
+            print(f"Error loading image {img_url}: {e}")
+        return None
+    
     for line in lines:
         line = line.strip()
         if not line:
@@ -2280,11 +2300,10 @@ async def export_to_word(request: ExportRequest):
                 # Add image
                 alt_text = match.group(1)
                 img_url = match.group(2)
-                try:
-                    headers = {'User-Agent': 'Mozilla/5.0'}
-                    response = requests.get(img_url, headers=headers, timeout=10)
-                    if response.status_code == 200:
-                        image_stream = io.BytesIO(response.content)
+                
+                image_stream = get_image_from_url(img_url)
+                if image_stream:
+                    try:
                         doc.add_picture(image_stream, width=Inches(5))
                         
                         # Add caption
@@ -2293,7 +2312,9 @@ async def export_to_word(request: ExportRequest):
                             cap_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                             cap_para.runs[0].font.size = Pt(10)
                             cap_para.runs[0].font.italic = True
-                except Exception as e:
+                    except Exception as e:
+                        doc.add_paragraph(f"[Image: {alt_text or 'Could not load'}]")
+                else:
                     doc.add_paragraph(f"[Image: {alt_text or 'Could not load'}]")
                 
                 last_end = match.end()
@@ -2486,13 +2507,32 @@ async def export_to_pdf(request: ExportRequest):
             story.append(Paragraph("Screenshots & Images", styles['CustomHeading']))
             story.append(Spacer(1, 15))
             
+            def load_image_data(img_url):
+                """Load image data from local path or URL"""
+                try:
+                    # Check if it's a local doc-image
+                    if img_url.startswith('/doc-images/'):
+                        filename = img_url.replace('/doc-images/', '')
+                        local_path = os.path.join(DOC_IMAGES_FOLDER, filename)
+                        if os.path.exists(local_path):
+                            with open(local_path, 'rb') as f:
+                                return f.read()
+                    
+                    # Otherwise try to fetch from URL
+                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                    response = requests.get(img_url, headers=headers, timeout=15)
+                    if response.status_code == 200:
+                        return response.content
+                except Exception as e:
+                    print(f"Error loading image {img_url}: {e}")
+                return None
+            
             for img in all_images:
                 try:
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                    response = requests.get(img['url'], headers=headers, timeout=15)
-                    if response.status_code == 200:
+                    img_data = load_image_data(img['url'])
+                    if img_data:
                         # Convert to PNG using PIL for better compatibility
-                        pil_img = PILImage.open(io.BytesIO(response.content))
+                        pil_img = PILImage.open(io.BytesIO(img_data))
                         
                         # Convert to RGB if necessary (for PNG with transparency)
                         if pil_img.mode in ('RGBA', 'LA', 'P'):
@@ -2512,6 +2552,8 @@ async def export_to_pdf(request: ExportRequest):
                         if img['alt']:
                             story.append(Paragraph(img['alt'][:200], styles['Caption']))
                         story.append(Spacer(1, 10))
+                    else:
+                        story.append(Paragraph(f"[Image: {img['alt'] or 'Could not load'}]", styles['Caption']))
                 except Exception as img_error:
                     print(f"Failed to add image: {img['url']} - {str(img_error)}")
                     story.append(Paragraph(f"[Image: {img['alt'] or 'Could not load'}]", styles['Caption']))
