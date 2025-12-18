@@ -25,3 +25,4 @@ langchain-text-splitters>=0.0.1
 python-docx
 reportlab
 Pillow
+PyMuPDF

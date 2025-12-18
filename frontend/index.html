@@ -1016,7 +1016,20 @@
         let currentConversationId = null;
         let isProcessing = false;
 
-        marked.setOptions({ breaks: true, gfm: true });
+        // Custom renderer to handle relative image URLs
+        const renderer = new marked.Renderer();
+        renderer.image = function(href, title, text) {
+            // Convert relative URLs to absolute
+            let imgUrl = href;
+            if (href && href.startsWith('/')) {
+                imgUrl = API_URL + href;
+            }
+            const titleAttr = title ? ` title="${title}"` : '';
+            const altText = text || title || 'Image';
+            return `<img src="${imgUrl}" alt="${altText}"${titleAttr} loading="lazy" onerror="this.style.display='none'">`;
+        };
+        
+        marked.setOptions({ breaks: true, gfm: true, renderer: renderer });
 
         document.addEventListener('DOMContentLoaded', () => {
             loadStats();

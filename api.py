@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -1114,6 +1114,163 @@ Response:"""
 
 # ==================== Upload Endpoints ====================
 
+# Image storage folder for extracted document images
+DOC_IMAGES_FOLDER = os.path.join(DATA_DIR, "doc_images")
+os.makedirs(DOC_IMAGES_FOLDER, exist_ok=True)
+
+def extract_images_from_pdf(pdf_path: str, doc_id: str) -> List[dict]:
+    """Extract images from PDF using PyMuPDF"""
+    images = []
+    try:
+        import fitz  # PyMuPDF
+        
+        pdf_doc = fitz.open(pdf_path)
+        
+        for page_num in range(len(pdf_doc)):
+            page = pdf_doc[page_num]
+            image_list = page.get_images()
+            
+            for img_index, img in enumerate(image_list):
+                try:
+                    xref = img[0]
+                    base_image = pdf_doc.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    image_ext = base_image["ext"]
+                    
+                    # Skip very small images (likely icons)
+                    if len(image_bytes) < 5000:  # Less than 5KB
+                        continue
+                    
+                    # Save image
+                    img_filename = f"{doc_id}_page{page_num+1}_img{img_index+1}.{image_ext}"
+                    img_path = os.path.join(DOC_IMAGES_FOLDER, img_filename)
+                    
+                    with open(img_path, "wb") as f:
+                        f.write(image_bytes)
+                    
+                    images.append({
+                        'url': f"/doc-images/{img_filename}",
+                        'alt': f"Image from page {page_num + 1}",
+                        'title': f"Page {page_num + 1}, Image {img_index + 1}",
+                        'context': f"Screenshot from page {page_num + 1} of the document",
+                        'local_path': img_path
+                    })
+                    
+                except Exception as e:
+                    print(f"Error extracting image {img_index} from page {page_num}: {e}")
+                    continue
+        
+        pdf_doc.close()
+        print(f"📸 Extracted {len(images)} images from PDF")
+        
+    except ImportError:
+        print("⚠️ PyMuPDF not installed. Install with: pip install PyMuPDF")
+    except Exception as e:
+        print(f"Error extracting images from PDF: {e}")
+    
+    return images
+
+def extract_images_from_docx(docx_path: str, doc_id: str) -> List[dict]:
+    """Extract images from DOCX file"""
+    images = []
+    try:
+        from docx import Document as DocxDocument
+        import zipfile
+        
+        # DOCX is a zip file, extract images from word/media folder
+        with zipfile.ZipFile(docx_path, 'r') as zip_ref:
+            for file_info in zip_ref.filelist:
+                if file_info.filename.startswith('word/media/'):
+                    # Skip small files (likely icons)
+                    if file_info.file_size < 5000:
+                        continue
+                    
+                    ext = os.path.splitext(file_info.filename)[1]
+                    if ext.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff']:
+                        img_data = zip_ref.read(file_info.filename)
+                        
+                        img_index = len(images) + 1
+                        img_filename = f"{doc_id}_img{img_index}{ext}"
+                        img_path = os.path.join(DOC_IMAGES_FOLDER, img_filename)
+                        
+                        with open(img_path, "wb") as f:
+                            f.write(img_data)
+                        
+                        images.append({
+                            'url': f"/doc-images/{img_filename}",
+                            'alt': f"Image {img_index} from document",
+                            'title': f"Document Image {img_index}",
+                            'context': f"Screenshot {img_index} from the document",
+                            'local_path': img_path
+                        })
+        
+        print(f"📸 Extracted {len(images)} images from DOCX")
+        
+    except Exception as e:
+        print(f"Error extracting images from DOCX: {e}")
+    
+    return images
+
+def extract_images_from_pptx(pptx_path: str, doc_id: str) -> List[dict]:
+    """Extract images from PPTX file"""
+    images = []
+    try:
+        import zipfile
+        
+        # PPTX is a zip file, extract images from ppt/media folder
+        with zipfile.ZipFile(pptx_path, 'r') as zip_ref:
+            for file_info in zip_ref.filelist:
+                if file_info.filename.startswith('ppt/media/'):
+                    # Skip small files
+                    if file_info.file_size < 5000:
+                        continue
+                    
+                    ext = os.path.splitext(file_info.filename)[1]
+                    if ext.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff']:
+                        img_data = zip_ref.read(file_info.filename)
+                        
+                        img_index = len(images) + 1
+                        img_filename = f"{doc_id}_slide_img{img_index}{ext}"
+                        img_path = os.path.join(DOC_IMAGES_FOLDER, img_filename)
+                        
+                        with open(img_path, "wb") as f:
+                            f.write(img_data)
+                        
+                        images.append({
+                            'url': f"/doc-images/{img_filename}",
+                            'alt': f"Slide image {img_index}",
+                            'title': f"Presentation Image {img_index}",
+                            'context': f"Screenshot {img_index} from the presentation",
+                            'local_path': img_path
+                        })
+        
+        print(f"📸 Extracted {len(images)} images from PPTX")
+        
+    except Exception as e:
+        print(f"Error extracting images from PPTX: {e}")
+    
+    return images
+
+# Serve document images
+@app.get("/doc-images/{filename}")
+async def get_doc_image(filename: str):
+    """Serve extracted document images"""
+    file_path = os.path.join(DOC_IMAGES_FOLDER, filename)
+    if os.path.exists(file_path):
+        # Determine media type
+        ext = os.path.splitext(filename)[1].lower()
+        media_types = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.bmp': 'image/bmp',
+            '.tiff': 'image/tiff'
+        }
+        media_type = media_types.get(ext, 'image/png')
+        return FileResponse(file_path, media_type=media_type)
+    return {"error": "Image not found"}
+
 @app.post("/upload", response_model=IngestResponse)
 async def upload_file(file: UploadFile = File(...)):
     try:
@@ -1129,13 +1286,19 @@ async def upload_file(file: UploadFile = File(...)):
             tmp_path = tmp.name
         
         if suffix == ".pdf":
+            # Generate doc_id for images
+            doc_id = f"pdf_{uuid.uuid4().hex[:8]}"
+            
+            # Extract images from PDF
+            images = extract_images_from_pdf(tmp_path, doc_id)
+            
             loader = PyPDFLoader(tmp_path)
             documents = loader.load()
             full_text = "\n".join([doc.page_content for doc in documents])
             metadata = extract_metadata(full_text, "document")
-            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata)
+            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata, images=images)
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} semantic chunks", chunks=chunks)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks, {len(images)} images", chunks=chunks)
         
         elif suffix == ".txt":
             loader = TextLoader(tmp_path)
@@ -1148,12 +1311,19 @@ async def upload_file(file: UploadFile = File(...)):
         
         elif suffix == ".docx":
             from docx import Document as DocxDocument
+            
+            # Generate doc_id for images
+            doc_id = f"docx_{uuid.uuid4().hex[:8]}"
+            
+            # Extract images from DOCX
+            images = extract_images_from_docx(tmp_path, doc_id)
+            
             doc = DocxDocument(tmp_path)
             full_text = "\n".join([para.text for para in doc.paragraphs if para.text])
             metadata = extract_metadata(full_text, "document")
-            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata)
+            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata, images=images)
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} semantic chunks", chunks=chunks)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks, {len(images)} images", chunks=chunks)
         
         elif suffix in [".xlsx", ".xls"]:
             from openpyxl import load_workbook
@@ -1173,6 +1343,13 @@ async def upload_file(file: UploadFile = File(...)):
         
         elif suffix == ".pptx":
             from pptx import Presentation
+            
+            # Generate doc_id for images
+            doc_id = f"pptx_{uuid.uuid4().hex[:8]}"
+            
+            # Extract images from PPTX
+            images = extract_images_from_pptx(tmp_path, doc_id)
+            
             prs = Presentation(tmp_path)
             full_text = ""
             for slide_num, slide in enumerate(prs.slides, 1):
@@ -1181,9 +1358,9 @@ async def upload_file(file: UploadFile = File(...)):
                     if hasattr(shape, "text") and shape.text:
                         full_text += shape.text + "\n"
             metadata = extract_metadata(full_text, "presentation")
-            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "presentation", file_path, metadata)
+            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "presentation", file_path, metadata, images=images)
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} semantic chunks", chunks=chunks)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks, {len(images)} images", chunks=chunks)
         
         elif suffix in [".mp4", ".mp3", ".wav", ".m4a", ".webm", ".avi", ".mov"]:
             import whisper
