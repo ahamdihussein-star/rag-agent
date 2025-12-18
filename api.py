@@ -2172,117 +2172,90 @@ async def export_to_word(request: ExportRequest):
 @app.post("/export/pdf")
 async def export_to_pdf(request: ExportRequest):
     """Export content with inline images to PDF"""
-    from reportlab.lib.pagesizes import letter
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, ListFlowable, ListItem
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
-    import io
-    import re
-    
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=72)
-    
-    styles = getSampleStyleSheet()
-    
-    # Custom styles
-    styles.add(ParagraphStyle(
-        name='CustomTitle',
-        parent=styles['Title'],
-        fontSize=24,
-        spaceAfter=30,
-        alignment=TA_CENTER
-    ))
-    styles.add(ParagraphStyle(
-        name='CustomHeading',
-        parent=styles['Heading1'],
-        fontSize=16,
-        spaceAfter=12,
-        spaceBefore=20
-    ))
-    styles.add(ParagraphStyle(
-        name='CustomBody',
-        parent=styles['Normal'],
-        fontSize=11,
-        spaceAfter=8,
-        leading=14
-    ))
-    styles.add(ParagraphStyle(
-        name='Caption',
-        parent=styles['Normal'],
-        fontSize=9,
-        alignment=TA_CENTER,
-        italic=True,
-        spaceAfter=15
-    ))
-    
-    story = []
-    
-    # Add title
-    story.append(Paragraph(request.title, styles['CustomTitle']))
-    story.append(Spacer(1, 20))
-    
-    # Regex to find markdown images
-    img_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
-    
-    # Parse content
-    content = request.content
-    lines = content.split('\n')
-    current_list = []
-    
-    def add_inline_image(url, alt_text):
-        """Helper to add image to story"""
-        try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                image_stream = io.BytesIO(response.content)
-                img_obj = RLImage(image_stream, width=4*inch, height=3*inch, kind='proportional')
-                story.append(img_obj)
-                if alt_text:
-                    story.append(Paragraph(alt_text[:150], styles['Caption']))
-        except Exception as e:
-            story.append(Paragraph(f"[Image: {alt_text or 'Could not load'}]", styles['Caption']))
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            if current_list:
-                story.append(ListFlowable(current_list, bulletType='bullet'))
-                current_list = []
-            continue
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, ListFlowable, ListItem
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        import io
+        import re
+        from PIL import Image as PILImage
         
-        # Check for inline images
-        img_matches = list(img_pattern.finditer(line))
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=72)
         
-        if img_matches:
-            # Flush pending list
-            if current_list:
-                story.append(ListFlowable(current_list, bulletType='bullet'))
-                current_list = []
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        styles.add(ParagraphStyle(
+            name='CustomTitle',
+            parent=styles['Title'],
+            fontSize=24,
+            spaceAfter=30,
+            alignment=TA_CENTER
+        ))
+        styles.add(ParagraphStyle(
+            name='CustomHeading',
+            parent=styles['Heading1'],
+            fontSize=16,
+            spaceAfter=12,
+            spaceBefore=20
+        ))
+        styles.add(ParagraphStyle(
+            name='CustomBody',
+            parent=styles['Normal'],
+            fontSize=11,
+            spaceAfter=8,
+            leading=14
+        ))
+        styles.add(ParagraphStyle(
+            name='Caption',
+            parent=styles['Normal'],
+            fontSize=9,
+            alignment=TA_CENTER,
+            italic=True,
+            spaceAfter=15
+        ))
+        
+        story = []
+        
+        # Add title
+        story.append(Paragraph(request.title, styles['CustomTitle']))
+        story.append(Spacer(1, 20))
+        
+        # Regex to find markdown images
+        img_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+        
+        # Parse content - remove markdown images for PDF (they cause issues)
+        content = request.content
+        
+        # Extract all images first
+        all_images = []
+        for match in img_pattern.finditer(content):
+            all_images.append({
+                'alt': match.group(1),
+                'url': match.group(2)
+            })
+        
+        # Remove image markdown from content for cleaner processing
+        clean_content = img_pattern.sub('', content)
+        
+        lines = clean_content.split('\n')
+        current_list = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                if current_list:
+                    story.append(ListFlowable(current_list, bulletType='bullet'))
+                    current_list = []
+                continue
             
-            # Process line with images
-            last_end = 0
-            for match in img_matches:
-                # Add text before image
-                text_before = line[last_end:match.start()].strip()
-                if text_before:
-                    text_before = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text_before)
-                    story.append(Paragraph(text_before, styles['CustomBody']))
-                
-                # Add image
-                add_inline_image(match.group(2), match.group(1))
-                last_end = match.end()
-            
-            # Add remaining text
-            text_after = line[last_end:].strip()
-            if text_after:
-                text_after = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text_after)
-                story.append(Paragraph(text_after, styles['CustomBody']))
-        else:
-            # No images - handle normally
+            # Convert markdown bold to HTML
             line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
             
+            # Handle headers
             if line.startswith('### '):
                 if current_list:
                     story.append(ListFlowable(current_list, bulletType='bullet'))
@@ -2311,21 +2284,63 @@ async def export_to_pdf(request: ExportRequest):
                     story.append(ListFlowable(current_list, bulletType='bullet'))
                     current_list = []
                 story.append(Paragraph(line, styles['CustomBody']))
+        
+        # Flush any remaining list
+        if current_list:
+            story.append(ListFlowable(current_list, bulletType='bullet'))
+        
+        # Add images section at the end
+        if all_images:
+            story.append(Spacer(1, 30))
+            story.append(Paragraph("Screenshots & Images", styles['CustomHeading']))
+            story.append(Spacer(1, 15))
+            
+            for img in all_images:
+                try:
+                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                    response = requests.get(img['url'], headers=headers, timeout=15)
+                    if response.status_code == 200:
+                        # Convert to PNG using PIL for better compatibility
+                        pil_img = PILImage.open(io.BytesIO(response.content))
+                        
+                        # Convert to RGB if necessary (for PNG with transparency)
+                        if pil_img.mode in ('RGBA', 'LA', 'P'):
+                            background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
+                            if pil_img.mode == 'P':
+                                pil_img = pil_img.convert('RGBA')
+                            background.paste(pil_img, mask=pil_img.split()[-1] if pil_img.mode == 'RGBA' else None)
+                            pil_img = background
+                        
+                        img_buffer = io.BytesIO()
+                        pil_img.save(img_buffer, format='PNG')
+                        img_buffer.seek(0)
+                        
+                        img_obj = RLImage(img_buffer, width=5*inch, height=4*inch, kind='proportional')
+                        story.append(img_obj)
+                        
+                        if img['alt']:
+                            story.append(Paragraph(img['alt'][:200], styles['Caption']))
+                        story.append(Spacer(1, 10))
+                except Exception as img_error:
+                    print(f"Failed to add image: {img['url']} - {str(img_error)}")
+                    story.append(Paragraph(f"[Image: {img['alt'] or 'Could not load'}]", styles['Caption']))
+        
+        # Build PDF
+        doc.build(story)
+        buffer.seek(0)
+        
+        filename = f"{request.title.replace(' ', '_')}.pdf"
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
     
-    # Flush any remaining list
-    if current_list:
-        story.append(ListFlowable(current_list, bulletType='bullet'))
-    
-    # Build PDF
-    doc.build(story)
-    buffer.seek(0)
-    
-    filename = f"{request.title.replace(' ', '_')}.pdf"
-    return StreamingResponse(
-        buffer,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
+    except Exception as e:
+        print(f"PDF Export Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
 
 # ==================== Debug Endpoint ====================
 

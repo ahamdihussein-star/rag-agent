@@ -1369,6 +1369,11 @@
         }
 
         async function exportToWord(encodedContent) {
+            const btn = event.target.closest('.export-btn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span>⏳</span> Generating...';
+            btn.disabled = true;
+            
             try {
                 const content = decodeURIComponent(escape(atob(encodedContent)));
                 
@@ -1398,10 +1403,18 @@
             } catch (error) {
                 console.error('Export error:', error);
                 alert('Export failed: ' + error.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
             }
         }
 
         async function exportToPDF(encodedContent) {
+            const btn = event.target.closest('.export-btn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span>⏳</span> Generating...';
+            btn.disabled = true;
+            
             try {
                 const content = decodeURIComponent(escape(atob(encodedContent)));
                 
@@ -1416,21 +1429,30 @@
                 });
                 
                 if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'RAG_Agent_Export.pdf';
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    a.remove();
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/pdf')) {
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'RAG_Agent_Export.pdf';
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        a.remove();
+                    } else {
+                        const data = await response.json();
+                        alert('PDF Export Error: ' + (data.error || 'Unknown error'));
+                    }
                 } else {
-                    alert('Failed to export to PDF');
+                    alert('Failed to export to PDF. Status: ' + response.status);
                 }
             } catch (error) {
                 console.error('Export error:', error);
                 alert('Export failed: ' + error.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
             }
         }
 
