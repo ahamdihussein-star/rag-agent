@@ -2490,21 +2490,54 @@ async def export_to_pdf(request: ExportRequest):
         # Regex to find markdown images
         img_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
         
-        # Parse content - remove markdown images for PDF (they cause issues)
+        def load_and_convert_image(img_url):
+            """Load image and convert to PNG for ReportLab"""
+            try:
+                img_data = None
+                
+                # Check if it's a local doc-image
+                if img_url.startswith('/doc-images/'):
+                    filename = img_url.replace('/doc-images/', '')
+                    local_path = os.path.join(DOC_IMAGES_FOLDER, filename)
+                    if os.path.exists(local_path):
+                        with open(local_path, 'rb') as f:
+                            img_data = f.read()
+                else:
+                    # Try to fetch from URL
+                    headers = {'User-Agent': 'Mozilla/5.0'}
+                    response = requests.get(img_url, headers=headers, timeout=15)
+                    if response.status_code == 200:
+                        img_data = response.content
+                
+                if img_data:
+                    # Convert to PNG using PIL
+                    pil_img = PILImage.open(io.BytesIO(img_data))
+                    
+                    # Convert to RGB if necessary
+                    if pil_img.mode in ('RGBA', 'LA', 'P'):
+                        background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
+                        if pil_img.mode == 'P':
+                            pil_img = pil_img.convert('RGBA')
+                        if pil_img.mode == 'RGBA':
+                            background.paste(pil_img, mask=pil_img.split()[-1])
+                        else:
+                            background.paste(pil_img)
+                        pil_img = background
+                    elif pil_img.mode != 'RGB':
+                        pil_img = pil_img.convert('RGB')
+                    
+                    img_buffer = io.BytesIO()
+                    pil_img.save(img_buffer, format='PNG')
+                    img_buffer.seek(0)
+                    return img_buffer
+                    
+            except Exception as e:
+                print(f"Error loading image {img_url}: {e}")
+            return None
+        
+        # Process content line by line, handling images inline
         content = request.content
-        
-        # Extract all images first
-        all_images = []
-        for match in img_pattern.finditer(content):
-            all_images.append({
-                'alt': match.group(1),
-                'url': match.group(2)
-            })
-        
-        # Remove image markdown from content for cleaner processing
-        clean_content = img_pattern.sub('', content)
-        
-        lines = clean_content.split('\n')
+        lines = content.split('\n')
         current_list = []
         
         for line in lines:
@@ -2513,6 +2546,49 @@ async def export_to_pdf(request: ExportRequest):
                 if current_list:
                     story.append(ListFlowable(current_list, bulletType='bullet'))
                     current_list = []
+                continue
+            
+            # Check for image in line
+            img_match = img_pattern.search(line)
+            if img_match:
+                # Flush any pending list
+                if current_list:
+                    story.append(ListFlowable(current_list, bulletType='bullet'))
+                    current_list = []
+                
+                # Get text before and after image
+                text_before = line[:img_match.start()].strip()
+                text_after = line[img_match.end():].strip()
+                
+                # Add text before image
+                if text_before:
+                    text_before = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text_before)
+                    story.append(Paragraph(text_before, styles['CustomBody']))
+                
+                # Add the image
+                alt_text = img_match.group(1)
+                img_url = img_match.group(2)
+                
+                img_buffer = load_and_convert_image(img_url)
+                if img_buffer:
+                    try:
+                        img_obj = RLImage(img_buffer, width=5*inch, height=4*inch, kind='proportional')
+                        story.append(Spacer(1, 10))
+                        story.append(img_obj)
+                        if alt_text:
+                            story.append(Paragraph(alt_text, styles['Caption']))
+                        story.append(Spacer(1, 10))
+                    except Exception as e:
+                        print(f"Error adding image to PDF: {e}")
+                        story.append(Paragraph(f"[Image: {alt_text}]", styles['Caption']))
+                else:
+                    story.append(Paragraph(f"[Image: {alt_text}]", styles['Caption']))
+                
+                # Add text after image
+                if text_after:
+                    text_after = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text_after)
+                    story.append(Paragraph(text_after, styles['CustomBody']))
+                
                 continue
             
             # Convert markdown bold to HTML
@@ -2551,63 +2627,6 @@ async def export_to_pdf(request: ExportRequest):
         # Flush any remaining list
         if current_list:
             story.append(ListFlowable(current_list, bulletType='bullet'))
-        
-        # Add images section at the end
-        if all_images:
-            story.append(Spacer(1, 30))
-            story.append(Paragraph("Screenshots & Images", styles['CustomHeading']))
-            story.append(Spacer(1, 15))
-            
-            def load_image_data(img_url):
-                """Load image data from local path or URL"""
-                try:
-                    # Check if it's a local doc-image
-                    if img_url.startswith('/doc-images/'):
-                        filename = img_url.replace('/doc-images/', '')
-                        local_path = os.path.join(DOC_IMAGES_FOLDER, filename)
-                        if os.path.exists(local_path):
-                            with open(local_path, 'rb') as f:
-                                return f.read()
-                    
-                    # Otherwise try to fetch from URL
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                    response = requests.get(img_url, headers=headers, timeout=15)
-                    if response.status_code == 200:
-                        return response.content
-                except Exception as e:
-                    print(f"Error loading image {img_url}: {e}")
-                return None
-            
-            for img in all_images:
-                try:
-                    img_data = load_image_data(img['url'])
-                    if img_data:
-                        # Convert to PNG using PIL for better compatibility
-                        pil_img = PILImage.open(io.BytesIO(img_data))
-                        
-                        # Convert to RGB if necessary (for PNG with transparency)
-                        if pil_img.mode in ('RGBA', 'LA', 'P'):
-                            background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
-                            if pil_img.mode == 'P':
-                                pil_img = pil_img.convert('RGBA')
-                            background.paste(pil_img, mask=pil_img.split()[-1] if pil_img.mode == 'RGBA' else None)
-                            pil_img = background
-                        
-                        img_buffer = io.BytesIO()
-                        pil_img.save(img_buffer, format='PNG')
-                        img_buffer.seek(0)
-                        
-                        img_obj = RLImage(img_buffer, width=5*inch, height=4*inch, kind='proportional')
-                        story.append(img_obj)
-                        
-                        if img['alt']:
-                            story.append(Paragraph(img['alt'][:200], styles['Caption']))
-                        story.append(Spacer(1, 10))
-                    else:
-                        story.append(Paragraph(f"[Image: {img['alt'] or 'Could not load'}]", styles['Caption']))
-                except Exception as img_error:
-                    print(f"Failed to add image: {img['url']} - {str(img_error)}")
-                    story.append(Paragraph(f"[Image: {img['alt'] or 'Could not load'}]", styles['Caption']))
         
         # Build PDF
         doc.build(story)
