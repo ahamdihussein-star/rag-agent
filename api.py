@@ -1370,10 +1370,24 @@ async def upload_file(file: UploadFile = File(...)):
             return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks, {len(images)} images", chunks=chunks)
         
         elif suffix in [".mp4", ".mp3", ".wav", ".m4a", ".webm", ".avi", ".mov"]:
-            import whisper
-            model = whisper.load_model("base")
-            result = model.transcribe(tmp_path)
-            full_text = result["text"]
+            # Check file size (Whisper API limit is 25MB)
+            file_size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
+            if file_size_mb > 25:
+                os.unlink(tmp_path)
+                os.remove(file_path)
+                return IngestResponse(success=False, message=f"❌ File too large ({file_size_mb:.1f}MB). Maximum size is 25MB for audio/video transcription.")
+            
+            # Use OpenAI Whisper API for transcription
+            from openai import OpenAI
+            client = OpenAI()
+            
+            with open(tmp_path, "rb") as audio_file:
+                transcription = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file
+                )
+            
+            full_text = transcription.text
             metadata = extract_metadata(full_text, "video")
             chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "video", file_path, metadata)
             os.unlink(tmp_path)
