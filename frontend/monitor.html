@@ -3,910 +3,313 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pipeline Monitor - RAG Agent</title>
+    <title>Pipeline & Cost Monitor - RAG Agent</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0f0f23 100%);
             min-height: 100vh;
             color: #fff;
             padding: 20px;
         }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        /* Header */
+        .container { max-width: 1400px; margin: 0 auto; }
         .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 30px; padding-bottom: 20px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
-
         .header h1 {
             font-size: 2rem;
             background: linear-gradient(90deg, #00d9ff, #00ff88, #ff6b6b);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            display: flex;
-            align-items: center;
-            gap: 12px;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
-
-        .header-actions {
-            display: flex;
-            gap: 10px;
-        }
-
+        .header-actions { display: flex; gap: 10px; align-items: center; }
         .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 600;
-            transition: all 0.3s;
+            padding: 10px 20px; border: none; border-radius: 8px;
+            cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: all 0.3s;
         }
+        .btn-primary { background: linear-gradient(135deg, #00d9ff, #00ff88); color: #000; }
+        .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0,217,255,0.3); }
+        
+        /* Tabs */
+        .tabs { display: flex; gap: 5px; margin-bottom: 25px; background: rgba(255,255,255,0.05); padding: 5px; border-radius: 12px; width: fit-content; }
+        .tab { padding: 12px 25px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.95rem; font-weight: 600; background: transparent; color: #888; transition: all 0.3s; }
+        .tab.active { background: linear-gradient(135deg, #00d9ff, #00ff88); color: #000; }
+        .tab:hover:not(.active) { color: #fff; background: rgba(255,255,255,0.1); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #00d9ff, #00ff88);
-            color: #000;
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(0, 217, 255, 0.3);
-        }
-
-        /* Stats Grid */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
+        /* Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px; margin-bottom: 25px; }
         .stat-card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
-            padding: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            text-align: center;
-            transition: all 0.3s;
+            background: rgba(255,255,255,0.05); border-radius: 16px; padding: 20px;
+            border: 1px solid rgba(255,255,255,0.1); text-align: center; transition: all 0.3s;
         }
+        .stat-card:hover { transform: translateY(-5px); border-color: rgba(0,217,255,0.3); }
+        .stat-card.cost { border-color: rgba(255,215,0,0.3); }
+        .stat-icon { font-size: 1.8rem; margin-bottom: 8px; }
+        .stat-value { font-size: 1.6rem; font-weight: bold; background: linear-gradient(90deg, #00d9ff, #00ff88); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .stat-value.gold { background: linear-gradient(90deg, #ffd700, #ffaa00); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .stat-label { font-size: 0.75rem; color: #888; margin-top: 5px; }
 
-        .stat-card:hover {
-            transform: translateY(-5px);
-            border-color: rgba(0, 217, 255, 0.3);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-        }
+        /* Section */
+        .section { background: rgba(255,255,255,0.03); border-radius: 16px; padding: 25px; margin-bottom: 25px; border: 1px solid rgba(255,255,255,0.08); }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .section-title { font-size: 1.2rem; display: flex; align-items: center; gap: 10px; }
 
-        .stat-icon {
-            font-size: 2rem;
-            margin-bottom: 10px;
-        }
+        /* Pipeline */
+        .pipeline-flow { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 25px 0; }
+        .pipeline-step { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        .step-box { width: 70px; height: 70px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.1); transition: all 0.3s; }
+        .step-box.completed { border-color: #00ff88; background: rgba(0,255,136,0.1); }
+        .step-icon { font-size: 1.3rem; }
+        .step-time { font-size: 0.65rem; color: #00ff88; font-weight: 600; }
+        .step-name { font-size: 0.7rem; color: #aaa; }
+        .step-arrow { font-size: 1.2rem; color: rgba(255,255,255,0.3); }
 
-        .stat-value {
-            font-size: 2rem;
-            font-weight: bold;
-            background: linear-gradient(90deg, #00d9ff, #00ff88);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
+        /* Cost Grid */
+        .cost-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .cost-card { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; border: 1px solid rgba(255,215,0,0.2); }
+        .cost-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .cost-card-title { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+        .cost-breakdown { display: flex; flex-direction: column; gap: 8px; }
+        .cost-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .cost-item:last-child { border-bottom: none; }
+        .cost-item-label { color: #888; font-size: 0.85rem; }
+        .cost-item-value { font-family: 'Monaco', monospace; color: #00ff88; }
 
-        .stat-label {
-            font-size: 0.85rem;
-            color: #888;
-            margin-top: 5px;
-        }
+        /* Tables */
+        .logs-table { width: 100%; border-collapse: collapse; }
+        .logs-table th, .logs-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .logs-table th { background: rgba(255,255,255,0.05); font-weight: 600; color: #888; font-size: 0.75rem; text-transform: uppercase; }
+        .logs-table tr:hover { background: rgba(255,255,255,0.05); }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+        .badge-ingestion { background: rgba(138,43,226,0.3); color: #da70d6; }
+        .badge-retrieval { background: rgba(0,217,255,0.3); color: #00d9ff; }
+        .badge-openai { background: rgba(0,255,136,0.3); color: #00ff88; }
+        .badge-cohere { background: rgba(255,165,0,0.3); color: #ffa500; }
+        .badge-embedding, .badge-query_embedding { background: rgba(0,217,255,0.3); color: #00d9ff; }
+        .badge-generation { background: rgba(138,43,226,0.3); color: #da70d6; }
+        .badge-reranking { background: rgba(255,165,0,0.3); color: #ffa500; }
+        .duration { font-family: 'Monaco', monospace; color: #00ff88; }
+        .cost-value { font-family: 'Monaco', monospace; color: #ffd700; }
 
-        /* Pipeline Section */
-        .section {
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 16px;
-            padding: 25px;
-            margin-bottom: 25px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-        }
+        .avg-times { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; margin-top: 15px; }
+        .avg-time-card { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center; }
+        .avg-time-value { font-size: 1rem; font-weight: bold; color: #00d9ff; }
+        .avg-time-label { font-size: 0.65rem; color: #888; margin-top: 3px; }
 
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
+        .empty-state { text-align: center; padding: 30px; color: #666; }
+        .empty-state-icon { font-size: 2.5rem; margin-bottom: 10px; }
+        .refresh-indicator { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #888; }
+        .refresh-dot { width: 8px; height: 8px; border-radius: 50%; background: #00ff88; animation: blink 2s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        .section-title {
-            font-size: 1.3rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        /* Pipeline Flow */
-        .pipeline-flow {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            flex-wrap: wrap;
-            padding: 30px 0;
-        }
-
-        .pipeline-step {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-            min-width: 100px;
-        }
-
-        .step-box {
-            width: 80px;
-            height: 80px;
-            border-radius: 16px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            background: rgba(255, 255, 255, 0.05);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.3s;
-            position: relative;
-        }
-
-        .step-box.pending {
-            border-color: rgba(255, 255, 255, 0.2);
-            opacity: 0.5;
-        }
-
-        .step-box.running {
-            border-color: #00d9ff;
-            box-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
-            animation: pulse 1.5s infinite;
-        }
-
-        .step-box.completed {
-            border-color: #00ff88;
-            background: rgba(0, 255, 136, 0.1);
-        }
-
-        .step-box.error {
-            border-color: #ff6b6b;
-            background: rgba(255, 107, 107, 0.1);
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
-
-        .step-icon {
-            font-size: 1.5rem;
-        }
-
-        .step-time {
-            font-size: 0.7rem;
-            color: #00ff88;
-            font-weight: 600;
-        }
-
-        .step-name {
-            font-size: 0.75rem;
-            color: #aaa;
-            text-align: center;
-        }
-
-        .step-arrow {
-            font-size: 1.5rem;
-            color: rgba(255, 255, 255, 0.3);
-        }
-
-        /* Logs Table */
-        .logs-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .logs-table th,
-        .logs-table td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .logs-table th {
-            background: rgba(255, 255, 255, 0.05);
-            font-weight: 600;
-            color: #888;
-            font-size: 0.8rem;
-            text-transform: uppercase;
-        }
-
-        .logs-table tr:hover {
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .badge-ingestion {
-            background: rgba(138, 43, 226, 0.3);
-            color: #da70d6;
-        }
-
-        .badge-retrieval {
-            background: rgba(0, 217, 255, 0.3);
-            color: #00d9ff;
-        }
-
-        .badge-completed {
-            background: rgba(0, 255, 136, 0.3);
-            color: #00ff88;
-        }
-
-        .badge-error {
-            background: rgba(255, 107, 107, 0.3);
-            color: #ff6b6b;
-        }
-
-        .duration {
-            font-family: 'Monaco', monospace;
-            color: #00ff88;
-        }
-
-        /* Pipeline Detail Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: #1a1a3e;
-            border-radius: 16px;
-            padding: 30px;
-            max-width: 800px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .modal-close {
-            background: none;
-            border: none;
-            color: #fff;
-            font-size: 1.5rem;
-            cursor: pointer;
-        }
-
-        /* Step Details */
-        .step-details {
-            display: grid;
-            gap: 15px;
-        }
-
-        .step-detail-card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            padding: 15px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .step-detail-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-        }
-
-        .step-detail-icon.completed {
-            background: rgba(0, 255, 136, 0.2);
-        }
-
-        .step-detail-icon.error {
-            background: rgba(255, 107, 107, 0.2);
-        }
-
-        .step-detail-info {
-            flex: 1;
-        }
-
-        .step-detail-name {
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-
-        .step-detail-meta {
-            font-size: 0.8rem;
-            color: #888;
-        }
-
-        .step-detail-duration {
-            font-family: 'Monaco', monospace;
-            font-size: 1.2rem;
-            color: #00ff88;
-        }
-
-        /* Average Times */
-        .avg-times {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .avg-time-card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            padding: 15px;
-            text-align: center;
-        }
-
-        .avg-time-value {
-            font-size: 1.3rem;
-            font-weight: bold;
-            color: #00d9ff;
-        }
-
-        .avg-time-label {
-            font-size: 0.75rem;
-            color: #888;
-            margin-top: 5px;
-        }
-
-        /* Auto-refresh indicator */
-        .refresh-indicator {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.85rem;
-            color: #888;
-        }
-
-        .refresh-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #00ff88;
-            animation: blink 2s infinite;
-        }
-
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
-        }
-
-        /* Empty state */
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #666;
-        }
-
-        .empty-state-icon {
-            font-size: 3rem;
-            margin-bottom: 15px;
-        }
-
-        /* Responsive */
         @media (max-width: 768px) {
-            .header {
-                flex-direction: column;
-                gap: 15px;
-            }
-            
-            .pipeline-flow {
-                flex-direction: column;
-            }
-            
-            .step-arrow {
-                transform: rotate(90deg);
-            }
+            .header { flex-direction: column; gap: 15px; }
+            .pipeline-flow { flex-direction: column; }
+            .step-arrow { transform: rotate(90deg); }
+            .tabs { width: 100%; }
+            .tab { flex: 1; text-align: center; padding: 10px; font-size: 0.85rem; }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
         <div class="header">
-            <h1>
-                <span>🔄</span>
-                Pipeline Monitor
-            </h1>
+            <h1>📊 Pipeline & Cost Monitor</h1>
             <div class="header-actions">
-                <div class="refresh-indicator">
-                    <span class="refresh-dot"></span>
-                    Auto-refresh: 5s
-                </div>
-                <button class="btn btn-secondary" onclick="loadData()">🔄 Refresh</button>
-                <button class="btn btn-secondary" onclick="clearLogs()">🗑️ Clear Logs</button>
-                <a href="/frontend" class="btn btn-primary">← Back to Chat</a>
+                <div class="refresh-indicator"><span class="refresh-dot"></span> Auto: 5s</div>
+                <button class="btn btn-secondary" onclick="loadAllData()">🔄 Refresh</button>
+                <a href="/frontend" class="btn btn-primary">← Chat</a>
             </div>
         </div>
 
-        <!-- Stats Grid -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon">📊</div>
-                <div class="stat-value" id="total-runs">0</div>
-                <div class="stat-label">Total Pipelines</div>
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('pipeline')">🔄 Pipeline</button>
+            <button class="tab" onclick="switchTab('cost')">💰 Cost</button>
+        </div>
+
+        <!-- Pipeline Tab -->
+        <div id="pipeline-tab" class="tab-content active">
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-value" id="total-runs">0</div><div class="stat-label">Total Runs</div></div>
+                <div class="stat-card"><div class="stat-icon">📥</div><div class="stat-value" id="ingestion-count">0</div><div class="stat-label">Ingestions</div></div>
+                <div class="stat-card"><div class="stat-icon">🔍</div><div class="stat-value" id="retrieval-count">0</div><div class="stat-label">Retrievals</div></div>
+                <div class="stat-card"><div class="stat-icon">⚡</div><div class="stat-value" id="avg-ingestion">-</div><div class="stat-label">Avg Ingestion</div></div>
+                <div class="stat-card"><div class="stat-icon">🚀</div><div class="stat-value" id="avg-retrieval">-</div><div class="stat-label">Avg Retrieval</div></div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon">📥</div>
-                <div class="stat-value" id="ingestion-count">0</div>
-                <div class="stat-label">Ingestions</div>
+
+            <div class="section">
+                <div class="section-header"><h2 class="section-title"><span>📥</span> Ingestion Pipeline</h2></div>
+                <div class="pipeline-flow">
+                    <div class="pipeline-step"><div class="step-box" id="ing-extract"><span class="step-icon">📄</span><span class="step-time" id="ing-extract-time">-</span></div><span class="step-name">Extract</span></div>
+                    <span class="step-arrow">→</span>
+                    <div class="pipeline-step"><div class="step-box" id="ing-chunk"><span class="step-icon">🧠</span><span class="step-time" id="ing-chunk-time">-</span></div><span class="step-name">Chunk</span></div>
+                    <span class="step-arrow">→</span>
+                    <div class="pipeline-step"><div class="step-box" id="ing-embed"><span class="step-icon">🔢</span><span class="step-time" id="ing-embed-time">-</span></div><span class="step-name">Embed</span></div>
+                    <span class="step-arrow">→</span>
+                    <div class="pipeline-step"><div class="step-box" id="ing-store_vectors"><span class="step-icon">🌲</span><span class="step-time" id="ing-store_vectors-time">-</span></div><span class="step-name">Pinecone</span></div>
+                    <span class="step-arrow">→</span>
+                    <div class="pipeline-step"><div class="step-box" id="ing-store_bm25"><span class="step-icon">📚</span><span class="step-time" id="ing-store_bm25-time">-</span></div><span class="step-name">BM25</span></div>
+                </div>
+                <div class="avg-times" id="ingestion-avg-times"></div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon">🔍</div>
-                <div class="stat-value" id="retrieval-count">0</div>
-                <div class="stat-label">Retrievals</div>
+
+            <div class="section">
+                <div class="section-header"><h2 class="section-title"><span>🔍</span> Retrieval Pipeline</h2></div>
+                <div class="pipeline-flow">
+                    <div class="pipeline-step"><div class="step-box" id="ret-embed_query"><span class="step-icon">🔢</span><span class="step-time" id="ret-embed_query-time">-</span></div><span class="step-name">Embed</span></div>
+                    <span class="step-arrow">→</span>
+                    <div class="pipeline-step"><div class="step-box" id="ret-pinecone_search"><span class="step-icon">🌲</span><span class="step-time" id="ret-pinecone_search-time">-</span></div><span class="step-name">Pinecone</span></div>
+                    <span class="step-arrow">→</span>
+                    <div class="pipeline-step"><div class="step-box" id="ret-bm25_search"><span class="step-icon">📚</span><span class="step-time" id="ret-bm25_search-time">-</span></div><span class="step-name">BM25</span></div>
+                    <span class="step-arrow">→</span>
+                    <div class="pipeline-step"><div class="step-box" id="ret-rrf_merge"><span class="step-icon">🔀</span><span class="step-time" id="ret-rrf_merge-time">-</span></div><span class="step-name">RRF</span></div>
+                    <span class="step-arrow">→</span>
+                    <div class="pipeline-step"><div class="step-box" id="ret-rerank"><span class="step-icon">🎯</span><span class="step-time" id="ret-rerank-time">-</span></div><span class="step-name">Rerank</span></div>
+                    <span class="step-arrow">→</span>
+                    <div class="pipeline-step"><div class="step-box" id="ret-generate"><span class="step-icon">🤖</span><span class="step-time" id="ret-generate-time">-</span></div><span class="step-name">Generate</span></div>
+                </div>
+                <div class="avg-times" id="retrieval-avg-times"></div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon">⚡</div>
-                <div class="stat-value" id="avg-ingestion">0ms</div>
-                <div class="stat-label">Avg Ingestion</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">🚀</div>
-                <div class="stat-value" id="avg-retrieval">0ms</div>
-                <div class="stat-label">Avg Retrieval</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">📈</div>
-                <div class="stat-value" id="last-24h">0</div>
-                <div class="stat-label">Last 24 Hours</div>
+
+            <div class="section">
+                <div class="section-header"><h2 class="section-title"><span>📋</span> Recent Runs</h2><button class="btn btn-secondary" style="padding:6px 12px;font-size:0.8rem" onclick="clearPipelineLogs()">🗑️</button></div>
+                <table class="logs-table"><thead><tr><th>Time</th><th>Type</th><th>Source</th><th>Duration</th></tr></thead>
+                <tbody id="pipeline-logs-body"><tr><td colspan="4"><div class="empty-state"><div class="empty-state-icon">📊</div><p>No runs yet</p></div></td></tr></tbody></table>
             </div>
         </div>
 
-        <!-- Ingestion Pipeline -->
-        <div class="section">
-            <div class="section-header">
-                <h2 class="section-title">
-                    <span>📥</span>
-                    Ingestion Pipeline
-                </h2>
+        <!-- Cost Tab -->
+        <div id="cost-tab" class="tab-content">
+            <div class="stats-grid">
+                <div class="stat-card cost"><div class="stat-icon">💰</div><div class="stat-value gold" id="total-cost">$0.00</div><div class="stat-label">Total Cost</div></div>
+                <div class="stat-card cost"><div class="stat-icon">🤖</div><div class="stat-value gold" id="openai-cost">$0.00</div><div class="stat-label">OpenAI</div></div>
+                <div class="stat-card cost"><div class="stat-icon">🎯</div><div class="stat-value gold" id="cohere-cost">$0.00</div><div class="stat-label">Cohere</div></div>
+                <div class="stat-card cost"><div class="stat-icon">📅</div><div class="stat-value gold" id="today-cost">$0.00</div><div class="stat-label">Today</div></div>
             </div>
-            <div class="pipeline-flow" id="ingestion-pipeline">
-                <div class="pipeline-step">
-                    <div class="step-box" id="ing-extract">
-                        <span class="step-icon">📄</span>
-                        <span class="step-time" id="ing-extract-time">-</span>
-                    </div>
-                    <span class="step-name">Extract</span>
-                </div>
-                <span class="step-arrow">→</span>
-                <div class="pipeline-step">
-                    <div class="step-box" id="ing-chunk">
-                        <span class="step-icon">🧠</span>
-                        <span class="step-time" id="ing-chunk-time">-</span>
-                    </div>
-                    <span class="step-name">Chunk</span>
-                </div>
-                <span class="step-arrow">→</span>
-                <div class="pipeline-step">
-                    <div class="step-box" id="ing-embed">
-                        <span class="step-icon">🔢</span>
-                        <span class="step-time" id="ing-embed-time">-</span>
-                    </div>
-                    <span class="step-name">Embed</span>
-                </div>
-                <span class="step-arrow">→</span>
-                <div class="pipeline-step">
-                    <div class="step-box" id="ing-store_vectors">
-                        <span class="step-icon">🌲</span>
-                        <span class="step-time" id="ing-store_vectors-time">-</span>
-                    </div>
-                    <span class="step-name">Pinecone</span>
-                </div>
-                <span class="step-arrow">→</span>
-                <div class="pipeline-step">
-                    <div class="step-box" id="ing-store_bm25">
-                        <span class="step-icon">📚</span>
-                        <span class="step-time" id="ing-store_bm25-time">-</span>
-                    </div>
-                    <span class="step-name">BM25</span>
-                </div>
-            </div>
-            <div class="avg-times" id="ingestion-avg-times"></div>
-        </div>
 
-        <!-- Retrieval Pipeline -->
-        <div class="section">
-            <div class="section-header">
-                <h2 class="section-title">
-                    <span>🔍</span>
-                    Retrieval Pipeline
-                </h2>
-            </div>
-            <div class="pipeline-flow" id="retrieval-pipeline">
-                <div class="pipeline-step">
-                    <div class="step-box" id="ret-embed_query">
-                        <span class="step-icon">🔢</span>
-                        <span class="step-time" id="ret-embed_query-time">-</span>
-                    </div>
-                    <span class="step-name">Embed Query</span>
+            <div class="cost-grid">
+                <div class="cost-card">
+                    <div class="cost-card-header"><span class="cost-card-title">📊 By Operation</span></div>
+                    <div class="cost-breakdown" id="cost-by-operation"><div class="empty-state"><p>No data yet</p></div></div>
                 </div>
-                <span class="step-arrow">→</span>
-                <div class="pipeline-step">
-                    <div class="step-box" id="ret-pinecone_search">
-                        <span class="step-icon">🌲</span>
-                        <span class="step-time" id="ret-pinecone_search-time">-</span>
-                    </div>
-                    <span class="step-name">Pinecone</span>
-                </div>
-                <span class="step-arrow">→</span>
-                <div class="pipeline-step">
-                    <div class="step-box" id="ret-bm25_search">
-                        <span class="step-icon">📚</span>
-                        <span class="step-time" id="ret-bm25_search-time">-</span>
-                    </div>
-                    <span class="step-name">BM25</span>
-                </div>
-                <span class="step-arrow">→</span>
-                <div class="pipeline-step">
-                    <div class="step-box" id="ret-rrf_merge">
-                        <span class="step-icon">🔀</span>
-                        <span class="step-time" id="ret-rrf_merge-time">-</span>
-                    </div>
-                    <span class="step-name">RRF Merge</span>
-                </div>
-                <span class="step-arrow">→</span>
-                <div class="pipeline-step">
-                    <div class="step-box" id="ret-rerank">
-                        <span class="step-icon">🎯</span>
-                        <span class="step-time" id="ret-rerank-time">-</span>
-                    </div>
-                    <span class="step-name">Rerank</span>
-                </div>
-                <span class="step-arrow">→</span>
-                <div class="pipeline-step">
-                    <div class="step-box" id="ret-generate">
-                        <span class="step-icon">🤖</span>
-                        <span class="step-time" id="ret-generate-time">-</span>
-                    </div>
-                    <span class="step-name">Generate</span>
+                <div class="cost-card">
+                    <div class="cost-card-header"><span class="cost-card-title">🏷️ By Service</span></div>
+                    <div class="cost-breakdown" id="cost-by-service"><div class="empty-state"><p>No data yet</p></div></div>
                 </div>
             </div>
-            <div class="avg-times" id="retrieval-avg-times"></div>
-        </div>
 
-        <!-- Recent Logs -->
-        <div class="section">
-            <div class="section-header">
-                <h2 class="section-title">
-                    <span>📋</span>
-                    Recent Pipeline Runs
-                </h2>
+            <div class="section" style="margin-top:20px">
+                <div class="section-header"><h2 class="section-title"><span>💳</span> Recent Costs</h2><button class="btn btn-secondary" style="padding:6px 12px;font-size:0.8rem" onclick="clearCostLogs()">🗑️</button></div>
+                <table class="logs-table"><thead><tr><th>Time</th><th>Service</th><th>Operation</th><th>Quantity</th><th>Cost</th></tr></thead>
+                <tbody id="cost-logs-body"><tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">💰</div><p>No costs yet</p></div></td></tr></tbody></table>
             </div>
-            <div id="logs-container">
-                <table class="logs-table">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Type</th>
-                            <th>Source</th>
-                            <th>Status</th>
-                            <th>Duration</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="logs-body">
-                        <tr>
-                            <td colspan="6">
-                                <div class="empty-state">
-                                    <div class="empty-state-icon">📊</div>
-                                    <p>No pipeline runs yet. Upload a document or ask a question to see pipeline data.</p>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
 
-    <!-- Detail Modal -->
-    <div class="modal" id="detail-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modal-title">Pipeline Details</h3>
-                <button class="modal-close" onclick="closeModal()">&times;</button>
-            </div>
-            <div id="modal-body">
-                <!-- Dynamic content -->
+            <div class="section">
+                <div class="section-header"><h2 class="section-title"><span>📋</span> Pricing Reference</h2></div>
+                <div class="cost-grid">
+                    <div class="cost-card">
+                        <div class="cost-card-header"><span class="cost-card-title">🤖 OpenAI</span></div>
+                        <div class="cost-breakdown">
+                            <div class="cost-item"><span class="cost-item-label">Embedding (3-large)</span><span class="cost-item-value">$0.13/1M</span></div>
+                            <div class="cost-item"><span class="cost-item-label">GPT-4o Input</span><span class="cost-item-value">$2.50/1M</span></div>
+                            <div class="cost-item"><span class="cost-item-label">GPT-4o Output</span><span class="cost-item-value">$10.00/1M</span></div>
+                            <div class="cost-item"><span class="cost-item-label">Whisper</span><span class="cost-item-value">$0.006/min</span></div>
+                        </div>
+                    </div>
+                    <div class="cost-card">
+                        <div class="cost-card-header"><span class="cost-card-title">🎯 Cohere</span></div>
+                        <div class="cost-breakdown">
+                            <div class="cost-item"><span class="cost-item-label">Rerank v3.5</span><span class="cost-item-value">$0.0005/search</span></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
         const API_URL = window.location.origin;
-        let refreshInterval;
-
-        async function loadData() {
-            await loadStats();
-            await loadLogs();
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelector(`.tab:nth-child(${tab === 'pipeline' ? 1 : 2})`).classList.add('active');
+            document.getElementById(`${tab}-tab`).classList.add('active');
         }
 
-        async function loadStats() {
+        async function loadAllData() { await loadPipelineStats(); await loadPipelineLogs(); await loadCostData(); }
+
+        async function loadPipelineStats() {
             try {
-                const response = await fetch(`${API_URL}/pipeline/stats`);
-                const data = await response.json();
-
-                document.getElementById('total-runs').textContent = data.total_runs || 0;
-                document.getElementById('ingestion-count').textContent = data.ingestion?.count || 0;
-                document.getElementById('retrieval-count').textContent = data.retrieval?.count || 0;
-                document.getElementById('avg-ingestion').textContent = formatDuration(data.ingestion?.avg_duration_ms || 0);
-                document.getElementById('avg-retrieval').textContent = formatDuration(data.retrieval?.avg_duration_ms || 0);
-                document.getElementById('last-24h').textContent = (data.last_24h?.ingestion || 0) + (data.last_24h?.retrieval || 0);
-
-                // Update average times for ingestion pipeline
-                updateAvgTimes('ingestion-avg-times', data.ingestion?.step_averages || {}, [
-                    { key: 'extract', label: 'Extract', icon: '📄' },
-                    { key: 'chunk', label: 'Chunk', icon: '🧠' },
-                    { key: 'embed', label: 'Embed', icon: '🔢' },
-                    { key: 'store_vectors', label: 'Pinecone', icon: '🌲' },
-                    { key: 'store_bm25', label: 'BM25', icon: '📚' }
-                ]);
-
-                // Update average times for retrieval pipeline
-                updateAvgTimes('retrieval-avg-times', data.retrieval?.step_averages || {}, [
-                    { key: 'embed_query', label: 'Embed', icon: '🔢' },
-                    { key: 'pinecone_search', label: 'Pinecone', icon: '🌲' },
-                    { key: 'bm25_search', label: 'BM25', icon: '📚' },
-                    { key: 'rrf_merge', label: 'RRF', icon: '🔀' },
-                    { key: 'rerank', label: 'Rerank', icon: '🎯' },
-                    { key: 'generate', label: 'Generate', icon: '🤖' }
-                ]);
-
-            } catch (error) {
-                console.error('Error loading stats:', error);
-            }
+                const r = await fetch(`${API_URL}/pipeline/stats`);
+                const d = await r.json();
+                document.getElementById('total-runs').textContent = d.total_runs || 0;
+                document.getElementById('ingestion-count').textContent = d.ingestion?.count || 0;
+                document.getElementById('retrieval-count').textContent = d.retrieval?.count || 0;
+                document.getElementById('avg-ingestion').textContent = fmtDur(d.ingestion?.avg_duration_ms);
+                document.getElementById('avg-retrieval').textContent = fmtDur(d.retrieval?.avg_duration_ms);
+                updAvg('ingestion-avg-times', d.ingestion?.step_averages || {}, ['extract','chunk','embed','store_vectors','store_bm25']);
+                updAvg('retrieval-avg-times', d.retrieval?.step_averages || {}, ['embed_query','pinecone_search','bm25_search','rrf_merge','rerank','generate']);
+            } catch(e) { console.error(e); }
         }
 
-        function updateAvgTimes(containerId, stepAverages, steps) {
-            const container = document.getElementById(containerId);
-            container.innerHTML = steps.map(step => `
-                <div class="avg-time-card">
-                    <div class="avg-time-value">${formatDuration(stepAverages[step.key] || 0)}</div>
-                    <div class="avg-time-label">${step.icon} ${step.label}</div>
-                </div>
-            `).join('');
+        function updAvg(id, avgs, steps) {
+            const icons = {extract:'📄',chunk:'🧠',embed:'🔢',store_vectors:'🌲',store_bm25:'📚',embed_query:'🔢',pinecone_search:'🌲',bm25_search:'📚',rrf_merge:'🔀',rerank:'🎯',generate:'🤖'};
+            document.getElementById(id).innerHTML = steps.map(s => `<div class="avg-time-card"><div class="avg-time-value">${fmtDur(avgs[s])}</div><div class="avg-time-label">${icons[s]||'📦'}</div></div>`).join('');
         }
 
-        async function loadLogs() {
+        async function loadPipelineLogs() {
             try {
-                const response = await fetch(`${API_URL}/pipeline/logs?limit=20`);
-                const data = await response.json();
+                const r = await fetch(`${API_URL}/pipeline/logs?limit=10`);
+                const d = await r.json();
+                const tb = document.getElementById('pipeline-logs-body');
+                if (!d.logs?.length) { tb.innerHTML = '<tr><td colspan="4"><div class="empty-state"><div class="empty-state-icon">📊</div><p>No runs yet</p></div></td></tr>'; return; }
+                tb.innerHTML = d.logs.map(l => `<tr><td>${fmtTime(l.start_time)}</td><td><span class="badge badge-${l.pipeline_type}">${l.pipeline_type==='ingestion'?'📥':'🔍'}</span></td><td title="${l.source}">${trunc(l.source,25)}</td><td class="duration">${fmtDur(l.total_duration_ms)}</td></tr>`).join('');
+                const li = d.logs.find(x=>x.pipeline_type==='ingestion'), lr = d.logs.find(x=>x.pipeline_type==='retrieval');
+                if(li) updViz('ing',li.steps); if(lr) updViz('ret',lr.steps);
+            } catch(e) { console.error(e); }
+        }
 
-                const tbody = document.getElementById('logs-body');
+        function updViz(p, steps) { for(const [n,s] of Object.entries(steps)) { const b=document.getElementById(`${p}-${n}`),t=document.getElementById(`${p}-${n}-time`); if(b)b.className='step-box '+s.status; if(t)t.textContent=fmtDur(s.duration_ms); } }
+
+        async function loadCostData() {
+            try {
+                const r = await fetch(`${API_URL}/cost/summary`);
+                const s = await r.json();
+                document.getElementById('total-cost').textContent = fmtCost(s.total_cost);
+                document.getElementById('openai-cost').textContent = fmtCost(s.by_service?.openai?.cost);
+                document.getElementById('cohere-cost').textContent = fmtCost(s.by_service?.cohere?.cost);
+                const today = new Date().toISOString().slice(0,10);
+                document.getElementById('today-cost').textContent = fmtCost(s.by_day?.[today]?.cost);
                 
-                if (!data.logs || data.logs.length === 0) {
-                    tbody.innerHTML = `
-                        <tr>
-                            <td colspan="6">
-                                <div class="empty-state">
-                                    <div class="empty-state-icon">📊</div>
-                                    <p>No pipeline runs yet. Upload a document or ask a question to see pipeline data.</p>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                    return;
-                }
-
-                tbody.innerHTML = data.logs.map(log => `
-                    <tr>
-                        <td>${formatTime(log.start_time)}</td>
-                        <td>
-                            <span class="badge badge-${log.pipeline_type}">
-                                ${log.pipeline_type === 'ingestion' ? '📥' : '🔍'} ${log.pipeline_type}
-                            </span>
-                        </td>
-                        <td title="${log.source}">${truncate(log.source, 30)}</td>
-                        <td>
-                            <span class="badge badge-${log.status}">
-                                ${log.status === 'completed' ? '✅' : '❌'} ${log.status}
-                            </span>
-                        </td>
-                        <td class="duration">${formatDuration(log.total_duration_ms)}</td>
-                        <td>
-                            <button class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.8rem;" 
-                                    onclick='showDetail(${JSON.stringify(log).replace(/'/g, "\\'")})'>
-                                👁️ View
-                            </button>
-                        </td>
-                    </tr>
-                `).join('');
-
-                // Update pipeline visualizations with latest run
-                const latestIngestion = data.logs.find(l => l.pipeline_type === 'ingestion');
-                const latestRetrieval = data.logs.find(l => l.pipeline_type === 'retrieval');
-
-                if (latestIngestion) updatePipelineViz('ing', latestIngestion.steps);
-                if (latestRetrieval) updatePipelineViz('ret', latestRetrieval.steps);
-
-            } catch (error) {
-                console.error('Error loading logs:', error);
-            }
-        }
-
-        function updatePipelineViz(prefix, steps) {
-            for (const [stepName, stepData] of Object.entries(steps)) {
-                const box = document.getElementById(`${prefix}-${stepName}`);
-                const timeEl = document.getElementById(`${prefix}-${stepName}-time`);
+                const opC = document.getElementById('cost-by-operation'), ops = s.by_operation || {};
+                opC.innerHTML = Object.keys(ops).length ? Object.entries(ops).map(([o,d])=>`<div class="cost-item"><span class="cost-item-label">${opIcon(o)} ${o}</span><span class="cost-item-value">${fmtCost(d.cost)}</span></div>`).join('') : '<div class="empty-state"><p>No data</p></div>';
                 
-                if (box) {
-                    box.className = 'step-box ' + stepData.status;
-                }
-                if (timeEl) {
-                    timeEl.textContent = formatDuration(stepData.duration_ms);
-                }
-            }
+                const svC = document.getElementById('cost-by-service'), svs = s.by_service || {};
+                svC.innerHTML = Object.keys(svs).length ? Object.entries(svs).map(([v,d])=>`<div class="cost-item"><span class="cost-item-label">${v==='openai'?'🤖':'🎯'} ${v}</span><span class="cost-item-value">${fmtCost(d.cost)}</span></div>`).join('') : '<div class="empty-state"><p>No data</p></div>';
+
+                const lr = await fetch(`${API_URL}/cost/logs?limit=15`);
+                const ld = await lr.json();
+                const ctb = document.getElementById('cost-logs-body');
+                if(!ld.logs?.length) { ctb.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">💰</div><p>No costs yet</p></div></td></tr>'; return; }
+                ctb.innerHTML = ld.logs.map(l=>`<tr><td>${fmtTime(l.timestamp)}</td><td><span class="badge badge-${l.service}">${l.service}</span></td><td><span class="badge badge-${l.operation}">${l.operation}</span></td><td>${l.quantity.toLocaleString()} ${l.unit}</td><td class="cost-value">${fmtCost(l.total_cost)}</td></tr>`).join('');
+            } catch(e) { console.error(e); }
         }
 
-        function showDetail(log) {
-            const modal = document.getElementById('detail-modal');
-            const title = document.getElementById('modal-title');
-            const body = document.getElementById('modal-body');
+        function opIcon(o) { return {embedding:'🔢',generation:'🤖',reranking:'🎯',query_embedding:'🔍'}[o]||'📦'; }
+        async function clearPipelineLogs() { if(!confirm('Clear pipeline logs?'))return; await fetch(`${API_URL}/pipeline/logs`,{method:'DELETE'}); loadAllData(); }
+        async function clearCostLogs() { if(!confirm('Clear cost logs?'))return; await fetch(`${API_URL}/cost/logs`,{method:'DELETE'}); loadAllData(); }
+        function fmtDur(ms) { if(!ms)return'-'; return ms<1000?Math.round(ms)+'ms':(ms/1000).toFixed(2)+'s'; }
+        function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString() : '-'; }
+        function fmtCost(c) { if(!c)return'$0.00'; return c<0.01?'$'+c.toFixed(6):'$'+c.toFixed(4); }
+        function trunc(s,l) { return s?.length>l ? s.slice(0,l)+'...' : s||'-'; }
 
-            title.innerHTML = `
-                <span class="badge badge-${log.pipeline_type}">${log.pipeline_type === 'ingestion' ? '📥' : '🔍'} ${log.pipeline_type}</span>
-                Pipeline Details
-            `;
-
-            const stepsHtml = Object.entries(log.steps).map(([name, step]) => `
-                <div class="step-detail-card">
-                    <div class="step-detail-icon ${step.status}">
-                        ${getStepIcon(name)}
-                    </div>
-                    <div class="step-detail-info">
-                        <div class="step-detail-name">${formatStepName(name)}</div>
-                        <div class="step-detail-meta">
-                            ${Object.entries(step.details || {}).map(([k, v]) => `${k}: ${v}`).join(' • ')}
-                        </div>
-                    </div>
-                    <div class="step-detail-duration">${formatDuration(step.duration_ms)}</div>
-                </div>
-            `).join('');
-
-            body.innerHTML = `
-                <div style="margin-bottom: 20px;">
-                    <p><strong>Source:</strong> ${log.source}</p>
-                    <p><strong>Time:</strong> ${log.start_time}</p>
-                    <p><strong>Total Duration:</strong> <span class="duration">${formatDuration(log.total_duration_ms)}</span></p>
-                </div>
-                <h4 style="margin-bottom: 15px;">Steps</h4>
-                <div class="step-details">
-                    ${stepsHtml}
-                </div>
-            `;
-
-            modal.classList.add('active');
-        }
-
-        function closeModal() {
-            document.getElementById('detail-modal').classList.remove('active');
-        }
-
-        async function clearLogs() {
-            if (!confirm('Are you sure you want to clear all pipeline logs?')) return;
-            
-            try {
-                await fetch(`${API_URL}/pipeline/logs`, { method: 'DELETE' });
-                loadData();
-            } catch (error) {
-                console.error('Error clearing logs:', error);
-            }
-        }
-
-        function formatDuration(ms) {
-            if (!ms || ms === 0) return '-';
-            if (ms < 1000) return Math.round(ms) + 'ms';
-            return (ms / 1000).toFixed(2) + 's';
-        }
-
-        function formatTime(isoString) {
-            if (!isoString) return '-';
-            const date = new Date(isoString);
-            return date.toLocaleTimeString();
-        }
-
-        function truncate(str, len) {
-            if (!str) return '-';
-            return str.length > len ? str.substring(0, len) + '...' : str;
-        }
-
-        function formatStepName(name) {
-            const names = {
-                'extract': 'Extract Content',
-                'chunk': 'Semantic Chunking',
-                'embed': 'Create Embeddings',
-                'store_vectors': 'Store in Pinecone',
-                'store_bm25': 'Store in BM25 Index',
-                'embed_query': 'Embed Query',
-                'pinecone_search': 'Pinecone Search',
-                'bm25_search': 'BM25 Search',
-                'rrf_merge': 'RRF Merge',
-                'rerank': 'Cohere Reranking',
-                'generate': 'GPT-4o Generation'
-            };
-            return names[name] || name;
-        }
-
-        function getStepIcon(name) {
-            const icons = {
-                'extract': '📄',
-                'chunk': '🧠',
-                'embed': '🔢',
-                'store_vectors': '🌲',
-                'store_bm25': '📚',
-                'embed_query': '🔢',
-                'pinecone_search': '🌲',
-                'bm25_search': '📚',
-                'rrf_merge': '🔀',
-                'rerank': '🎯',
-                'generate': '🤖'
-            };
-            return icons[name] || '📦';
-        }
-
-        // Close modal on outside click
-        document.getElementById('detail-modal').addEventListener('click', function(e) {
-            if (e.target === this) closeModal();
-        });
-
-        // Initial load
-        loadData();
-
-        // Auto-refresh every 5 seconds
-        refreshInterval = setInterval(loadData, 5000);
+        loadAllData();
+        setInterval(loadAllData, 5000);
     </script>
 </body>
 </html>
