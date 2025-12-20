@@ -872,15 +872,12 @@
 
         /* Token Preview (Real-time) */
         .token-preview {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 10px 15px;
             background: rgba(255, 215, 0, 0.05);
             border: 1px solid rgba(255, 215, 0, 0.2);
             border-radius: 12px;
             margin-bottom: 10px;
             transition: all 0.3s;
+            overflow: hidden;
         }
         
         .token-preview.hidden {
@@ -892,11 +889,28 @@
             background: rgba(255, 107, 107, 0.1);
         }
         
+        .token-preview-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .token-preview-header:hover {
+            background: rgba(255, 215, 0, 0.1);
+        }
+        
         .token-preview-stat {
             display: flex;
             align-items: center;
             gap: 6px;
             font-size: 0.8rem;
+        }
+        
+        .token-preview-stat .icon {
+            font-size: 1rem;
         }
         
         .token-preview-stat .value {
@@ -908,26 +922,92 @@
             color: #888;
         }
         
-        .token-preview-stat.cost .value {
+        .token-preview-stat.total-cost .value {
             color: #00ff88;
+            font-size: 1rem;
+        }
+        
+        .expand-arrow {
+            margin-left: auto;
+            color: #888;
+            transition: transform 0.3s;
+            font-size: 0.8rem;
+        }
+        
+        .expand-arrow.expanded {
+            transform: rotate(180deg);
+        }
+        
+        /* Cost Details Panel */
+        .cost-details-panel {
+            padding: 0 15px 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+        }
+        
+        .cost-details-panel.hidden {
+            display: none;
+        }
+        
+        .cost-detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 0.8rem;
+        }
+        
+        .cost-detail-row:last-child {
+            border-bottom: none;
+        }
+        
+        .cost-detail-row.total {
+            margin-top: 5px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 215, 0, 0.3);
+            border-bottom: none;
+        }
+        
+        .cost-label {
+            color: #aaa;
+        }
+        
+        .cost-value {
+            font-family: 'Monaco', monospace;
+            color: #00d9ff;
+            font-size: 0.85rem;
+        }
+        
+        .cost-detail-row.total .cost-label {
+            color: #ffd700;
+            font-weight: 600;
+        }
+        
+        .cost-detail-row.total .cost-value {
+            color: #00ff88;
+            font-weight: bold;
+            font-size: 0.95rem;
         }
         
         .analyze-btn {
-            padding: 6px 12px;
+            display: block;
+            width: calc(100% - 30px);
+            margin: 0 15px 12px;
+            padding: 8px 12px;
             border: none;
-            border-radius: 15px;
-            background: rgba(255, 215, 0, 0.2);
+            border-radius: 8px;
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(255, 165, 0, 0.2));
             color: #ffd700;
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-            margin-left: auto;
         }
         
         .analyze-btn:hover {
-            background: rgba(255, 215, 0, 0.3);
-            transform: scale(1.05);
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.3), rgba(255, 165, 0, 0.3));
+            transform: scale(1.02);
         }
         
         /* Optimization Modal */
@@ -1371,16 +1451,45 @@
                         </div>
                     </div>
                     <div class="chat-input-container">
-                        <!-- Real-time Token Preview -->
+                        <!-- Real-time Token Preview with Full Cost Breakdown -->
                         <div class="token-preview hidden" id="token-preview">
-                            <div class="token-preview-stat">
-                                <span class="value" id="preview-tokens">0</span>
-                                <span class="label">tokens</span>
+                            <div class="token-preview-header" onclick="toggleCostDetails()">
+                                <div class="token-preview-stat">
+                                    <span class="icon">📊</span>
+                                    <span class="value" id="preview-tokens">0</span>
+                                    <span class="label">tokens</span>
+                                </div>
+                                <div class="token-preview-stat total-cost">
+                                    <span class="label">Total ≈</span>
+                                    <span class="value" id="preview-cost">$0.00</span>
+                                </div>
+                                <span class="expand-arrow" id="cost-expand-arrow">▼</span>
                             </div>
-                            <div class="token-preview-stat cost">
-                                <span class="label">≈</span>
-                                <span class="value" id="preview-cost">$0.00</span>
+                            
+                            <!-- Expandable Cost Breakdown -->
+                            <div class="cost-details-panel hidden" id="cost-details-panel">
+                                <div class="cost-detail-row">
+                                    <span class="cost-label">🔢 Query Embedding</span>
+                                    <span class="cost-value" id="cost-embedding">$0.000001</span>
+                                </div>
+                                <div class="cost-detail-row">
+                                    <span class="cost-label">🎯 Reranking (Cohere)</span>
+                                    <span class="cost-value" id="cost-rerank">$0.000500</span>
+                                </div>
+                                <div class="cost-detail-row">
+                                    <span class="cost-label">🤖 GPT-4o Input</span>
+                                    <span class="cost-value" id="cost-llm-input">$0.00</span>
+                                </div>
+                                <div class="cost-detail-row">
+                                    <span class="cost-label">🤖 GPT-4o Output</span>
+                                    <span class="cost-value" id="cost-llm-output">$0.00</span>
+                                </div>
+                                <div class="cost-detail-row total">
+                                    <span class="cost-label">💰 Total Estimated</span>
+                                    <span class="cost-value" id="cost-total">$0.00</span>
+                                </div>
                             </div>
+                            
                             <button class="analyze-btn" onclick="showOptimizationModal()">💡 Optimize</button>
                         </div>
                         
@@ -2510,15 +2619,23 @@
             const totalInputTokens = queryTokens + ESTIMATED_CONTEXT_TOKENS + 200; // +200 system prompt
             const totalTokens = totalInputTokens + ESTIMATED_OUTPUT_TOKENS;
             
-            // Calculate estimated cost
+            // Calculate detailed costs
+            const embedCost = (queryTokens / 1000000) * 0.13;  // Query embedding
+            const rerankCost = 0.0005;  // Cohere rerank (fixed per search)
             const inputCost = (totalInputTokens / 1000000) * 2.50;  // GPT-4o input
             const outputCost = (ESTIMATED_OUTPUT_TOKENS / 1000000) * 10.00;  // GPT-4o output
-            const rerankCost = 0.0005;  // Cohere rerank
-            const embedCost = (queryTokens / 1000000) * 0.13;  // Query embedding
-            const totalCost = inputCost + outputCost + rerankCost + embedCost;
+            const totalCost = embedCost + rerankCost + inputCost + outputCost;
             
+            // Update main display
             document.getElementById('preview-tokens').textContent = totalTokens.toLocaleString();
             document.getElementById('preview-cost').textContent = '$' + totalCost.toFixed(4);
+            
+            // Update detailed breakdown
+            document.getElementById('cost-embedding').textContent = '$' + embedCost.toFixed(6);
+            document.getElementById('cost-rerank').textContent = '$' + rerankCost.toFixed(6);
+            document.getElementById('cost-llm-input').textContent = '$' + inputCost.toFixed(6);
+            document.getElementById('cost-llm-output').textContent = '$' + outputCost.toFixed(6);
+            document.getElementById('cost-total').textContent = '$' + totalCost.toFixed(4);
             
             preview.classList.remove('hidden');
             
@@ -2531,6 +2648,13 @@
             
             // Generate suggestions
             currentAnalysis = generateSuggestions(query, queryTokens, ESTIMATED_CONTEXT_TOKENS, totalTokens, totalCost);
+        }
+        
+        function toggleCostDetails() {
+            const panel = document.getElementById('cost-details-panel');
+            const arrow = document.getElementById('cost-expand-arrow');
+            panel.classList.toggle('hidden');
+            arrow.classList.toggle('expanded');
         }
         
         function generateSuggestions(query, queryTokens, contextTokens, totalTokens, totalCost) {
