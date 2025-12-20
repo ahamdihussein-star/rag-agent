@@ -315,7 +315,7 @@ class CostTracker:
     @staticmethod
     def estimate_tokens(text: str) -> int:
         """Rough estimate: ~4 characters per token for English"""
-        return len(text) // 4
+        return max(1, len(text) // 4)
     
     @staticmethod
     def calculate_embedding_cost(text: str, model: str = "text-embedding-3-large") -> dict:
@@ -328,12 +328,14 @@ class CostTracker:
             "tokens": tokens,
             "cost": round(cost, 8),
             "model": model,
-            "formula": f"({tokens} ÷ 1,000,000) × ${pricing['price_per_million_tokens']}"
+            "formula": f"({tokens} ÷ 1,000,000) × ${pricing['price_per_million_tokens']}",
+            "text_preview": text[:200] + "..." if len(text) > 200 else text,
+            "text_length": len(text)
         }
     
     @staticmethod
-    def calculate_llm_cost(input_text: str, output_text: str, model: str = "gpt-4o") -> dict:
-        """Calculate cost for LLM generation"""
+    def calculate_llm_cost(input_text: str, output_text: str, model: str = "gpt-4o", breakdown: dict = None) -> dict:
+        """Calculate cost for LLM generation with detailed breakdown"""
         input_tokens = CostTracker.estimate_tokens(input_text)
         output_tokens = CostTracker.estimate_tokens(output_text)
         pricing = API_PRICING["openai"].get(model, API_PRICING["openai"]["gpt-4o"])
@@ -342,7 +344,7 @@ class CostTracker:
         output_cost = (output_tokens / 1_000_000) * pricing["output_price_per_million_tokens"]
         total_cost = input_cost + output_cost
         
-        return {
+        result = {
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
@@ -350,8 +352,131 @@ class CostTracker:
             "output_cost": round(output_cost, 8),
             "total_cost": round(total_cost, 8),
             "model": model,
-            "formula": f"Input: ({input_tokens} ÷ 1M) × ${pricing['input_price_per_million_tokens']} + Output: ({output_tokens} ÷ 1M) × ${pricing['output_price_per_million_tokens']}"
+            "formula": f"Input: ({input_tokens} ÷ 1M) × ${pricing['input_price_per_million_tokens']} + Output: ({output_tokens} ÷ 1M) × ${pricing['output_price_per_million_tokens']}",
+            "input_preview": input_text[:300] + "..." if len(input_text) > 300 else input_text,
+            "output_preview": output_text[:300] + "..." if len(output_text) > 300 else output_text
         }
+        
+        # Add detailed breakdown if provided
+        if breakdown:
+            result["breakdown"] = breakdown
+        
+        return result
+    
+    @staticmethod
+    def calculate_prompt_breakdown(system_prompt: str, conversation_history: str, 
+                                   document_context: str, user_question: str) -> dict:
+        """Calculate detailed breakdown of prompt components"""
+        components = {
+            "system_prompt": {
+                "text": system_prompt,
+                "tokens": CostTracker.estimate_tokens(system_prompt),
+                "percentage": 0
+            },
+            "conversation_history": {
+                "text": conversation_history,
+                "tokens": CostTracker.estimate_tokens(conversation_history) if conversation_history else 0,
+                "percentage": 0
+            },
+            "document_context": {
+                "text": document_context[:500] + "..." if len(document_context) > 500 else document_context,
+                "tokens": CostTracker.estimate_tokens(document_context) if document_context else 0,
+                "percentage": 0
+            },
+            "user_question": {
+                "text": user_question,
+                "tokens": CostTracker.estimate_tokens(user_question),
+                "percentage": 0
+            }
+        }
+        
+        total_tokens = sum(c["tokens"] for c in components.values())
+        
+        # Calculate percentages
+        for key in components:
+            if total_tokens > 0:
+                components[key]["percentage"] = round((components[key]["tokens"] / total_tokens) * 100, 1)
+        
+        return {
+            "components": components,
+            "total_input_tokens": total_tokens
+        }
+    
+    @staticmethod
+    def generate_optimization_suggestions(question: str, context_tokens: int, 
+                                          total_tokens: int, operation: str = "retrieval") -> list:
+        """Generate smart suggestions to optimize token usage"""
+        suggestions = []
+        
+        if operation == "retrieval":
+            # Question optimization
+            question_tokens = CostTracker.estimate_tokens(question)
+            
+            # Check for unnecessary words
+            filler_words = ["please", "can you", "could you", "i want to", "i need to", 
+                          "help me", "tell me", "explain to me", "i would like"]
+            question_lower = question.lower()
+            found_fillers = [w for w in filler_words if w in question_lower]
+            
+            if found_fillers:
+                suggestions.append({
+                    "type": "question",
+                    "priority": "medium",
+                    "icon": "✂️",
+                    "title": "Remove filler words",
+                    "description": f"Words like '{', '.join(found_fillers[:2])}' can be removed",
+                    "potential_savings": f"~{len(found_fillers) * 3} tokens",
+                    "example": {
+                        "before": question[:100],
+                        "after": question[:100].replace("please ", "").replace("can you ", "").replace("I want to ", "")
+                    }
+                })
+            
+            # Check question length
+            if question_tokens > 50:
+                suggestions.append({
+                    "type": "question",
+                    "priority": "high",
+                    "icon": "📝",
+                    "title": "Shorten your question",
+                    "description": f"Your question uses {question_tokens} tokens. Try to be more concise.",
+                    "potential_savings": f"~{question_tokens - 30} tokens"
+                })
+            
+            # Context optimization
+            if context_tokens > 5000:
+                suggestions.append({
+                    "type": "context",
+                    "priority": "high",
+                    "icon": "📚",
+                    "title": "Large context detected",
+                    "description": f"Document context is {context_tokens} tokens ({round(context_tokens/total_tokens*100)}% of total)",
+                    "potential_savings": "Consider using more specific questions to retrieve smaller context"
+                })
+            
+            # Cost warning
+            if total_tokens > 8000:
+                suggestions.append({
+                    "type": "cost",
+                    "priority": "warning",
+                    "icon": "💰",
+                    "title": "High token usage",
+                    "description": f"This query uses ~{total_tokens} tokens (≈${round(total_tokens/1000000*12.5, 4)})",
+                    "potential_savings": "Break complex questions into smaller ones"
+                })
+        
+        elif operation == "ingestion":
+            if total_tokens > 10000:
+                suggestions.append({
+                    "type": "document",
+                    "priority": "info",
+                    "icon": "📄",
+                    "title": "Large document",
+                    "description": f"Document has ~{total_tokens} tokens",
+                    "potential_savings": "Consider splitting into smaller sections if not all content is needed"
+                })
+        
+        return suggestions
     
     @staticmethod
     def calculate_whisper_cost(duration_seconds: float) -> dict:
@@ -2574,6 +2699,62 @@ def clear_cost_logs():
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@app.get("/cost/logs/{log_id}")
+def get_cost_log_detail(log_id: str):
+    """Get detailed info for a specific cost log"""
+    try:
+        logs = load_cost_logs()
+        for log in logs:
+            if log.get("id") == log_id:
+                return {"log": log}
+        return {"error": "Cost log not found"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/cost/analyze")
+def analyze_query_cost(query: str):
+    """Pre-analyze a query to estimate cost and provide optimization suggestions"""
+    try:
+        query_tokens = CostTracker.estimate_tokens(query)
+        
+        # Estimate typical context size based on average
+        estimated_context_tokens = 3000  # Average context size
+        estimated_output_tokens = 500    # Average response size
+        
+        total_input = query_tokens + estimated_context_tokens + 200  # +200 for system prompt
+        
+        # Calculate estimated cost
+        pricing = API_PRICING["openai"]["gpt-4o"]
+        input_cost = (total_input / 1_000_000) * pricing["input_price_per_million_tokens"]
+        output_cost = (estimated_output_tokens / 1_000_000) * pricing["output_price_per_million_tokens"]
+        rerank_cost = API_PRICING["cohere"]["rerank-v3.5"]["price_per_search"]
+        embed_cost = (query_tokens / 1_000_000) * API_PRICING["openai"]["text-embedding-3-large"]["price_per_million_tokens"]
+        
+        total_estimated_cost = input_cost + output_cost + rerank_cost + embed_cost
+        
+        # Generate suggestions
+        suggestions = CostTracker.generate_optimization_suggestions(
+            question=query,
+            context_tokens=estimated_context_tokens,
+            total_tokens=total_input,
+            operation="retrieval"
+        )
+        
+        return {
+            "query_tokens": query_tokens,
+            "estimated_total_tokens": total_input + estimated_output_tokens,
+            "estimated_cost": round(total_estimated_cost, 6),
+            "breakdown": {
+                "query_embedding": round(embed_cost, 8),
+                "reranking": rerank_cost,
+                "llm_input": round(input_cost, 6),
+                "llm_output": round(output_cost, 6)
+            },
+            "suggestions": suggestions
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/monitor")
 def serve_monitor():
     """Serve the Pipeline Monitor dashboard"""
@@ -3002,6 +3183,37 @@ Response:"""
     if tracker:
         tracker.start_step("generate")
     
+    # Calculate prompt breakdown for token transparency
+    system_prompt = """You are a friendly and helpful AI assistant.
+Instructions:
+- Be friendly and conversational
+- If greeting, respond with a friendly greeting
+- Use conversation history to understand context
+- ONLY use information from above - do NOT make up information
+- If no relevant info, say "I don't have specific information about that."
+- Format using markdown (headers, bullet points, bold)
+- NEVER mention "documents", "context", "memory" in your response
+- NEVER list sources in text - shown separately
+- Be thorough - include ALL relevant details
+- When asked to list ALL items, include EVERY item found"""
+    
+    prompt_breakdown = CostTracker.calculate_prompt_breakdown(
+        system_prompt=system_prompt,
+        conversation_history=conversation_history,
+        document_context=doc_context,
+        user_question=question
+    )
+    
+    # Generate optimization suggestions
+    context_tokens = prompt_breakdown["components"]["document_context"]["tokens"]
+    total_input_tokens = prompt_breakdown["total_input_tokens"]
+    suggestions = CostTracker.generate_optimization_suggestions(
+        question=question,
+        context_tokens=context_tokens,
+        total_tokens=total_input_tokens,
+        operation="retrieval"
+    )
+    
     # Stream the response
     full_response = ""
     
@@ -3015,8 +3227,8 @@ Response:"""
                 chunk_json = json.dumps({"type": "chunk", "data": chunk.content})
                 yield f"data: {chunk_json}\n\n"
         
-        # Calculate and log LLM cost
-        llm_calc = CostTracker.calculate_llm_cost(prompt, full_response, "gpt-4o")
+        # Calculate and log LLM cost with breakdown
+        llm_calc = CostTracker.calculate_llm_cost(prompt, full_response, "gpt-4o", breakdown=prompt_breakdown)
         CostTracker.log_cost(
             service="openai",
             model="gpt-4o",
@@ -3028,7 +3240,8 @@ Response:"""
             source=question[:50],
             pipeline_id=tracker.id if tracker else "",
             input_tokens=llm_calc["input_tokens"],
-            output_tokens=llm_calc["output_tokens"]
+            output_tokens=llm_calc["output_tokens"],
+            breakdown=prompt_breakdown
         )
         
         # Complete pipeline tracking
@@ -3046,6 +3259,26 @@ Response:"""
             )
             if tracker.id in active_pipelines:
                 del active_pipelines[tracker.id]
+        
+        # Send token info to frontend
+        token_info = {
+            "type": "token_info",
+            "data": {
+                "input_tokens": llm_calc["input_tokens"],
+                "output_tokens": llm_calc["output_tokens"],
+                "total_tokens": llm_calc["total_tokens"],
+                "cost": llm_calc["total_cost"],
+                "breakdown": {
+                    "system_prompt": prompt_breakdown["components"]["system_prompt"]["tokens"],
+                    "conversation_history": prompt_breakdown["components"]["conversation_history"]["tokens"],
+                    "document_context": prompt_breakdown["components"]["document_context"]["tokens"],
+                    "user_question": prompt_breakdown["components"]["user_question"]["tokens"]
+                },
+                "suggestions": suggestions,
+                "formula": llm_calc["formula"]
+            }
+        }
+        yield f"data: {json.dumps(token_info)}\n\n"
         
         # Send done signal
         yield f"data: {json.dumps({'type': 'done'})}\n\n"

@@ -425,6 +425,239 @@
             text-decoration: none;
         }
 
+        /* Token Info Panel */
+        .token-info-panel {
+            margin-top: 16px;
+            background: rgba(255, 215, 0, 0.05);
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            border-radius: 12px;
+            overflow: hidden;
+            direction: ltr;
+            text-align: left;
+        }
+        
+        .token-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .token-header:hover {
+            background: rgba(255, 215, 0, 0.1);
+        }
+        
+        .token-icon {
+            font-size: 1.1rem;
+        }
+        
+        .token-summary {
+            flex: 1;
+            color: #ffd700;
+        }
+        
+        .token-cost {
+            margin-left: 10px;
+            color: #00ff88;
+            font-size: 0.85rem;
+        }
+        
+        .expand-icon {
+            color: #888;
+            transition: transform 0.3s;
+        }
+        
+        .token-info-panel.expanded .expand-icon,
+        .token-suggestions.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+        
+        .token-details {
+            display: none;
+            padding: 0 16px 16px;
+        }
+        
+        .token-info-panel.expanded .token-details {
+            display: block;
+        }
+        
+        .token-breakdown-visual {
+            margin-bottom: 15px;
+        }
+        
+        .breakdown-bar {
+            display: flex;
+            height: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .bar-segment {
+            transition: all 0.3s;
+        }
+        
+        .bar-segment.system { background: #ff6b6b; }
+        .bar-segment.history { background: #ffd700; }
+        .bar-segment.context { background: #00d9ff; }
+        .bar-segment.question { background: #00ff88; }
+        
+        .breakdown-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 10px;
+            font-size: 0.75rem;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #aaa;
+        }
+        
+        .legend-item .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        
+        .dot.system { background: #ff6b6b; }
+        .dot.history { background: #ffd700; }
+        .dot.context { background: #00d9ff; }
+        .dot.question { background: #00ff88; }
+        
+        .token-stats {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+        
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+        
+        .stat-row.total {
+            color: #ffd700;
+            font-weight: bold;
+        }
+        
+        .stat-row.cost {
+            color: #00ff88;
+            font-weight: bold;
+        }
+        
+        .token-formula {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 6px;
+            font-family: 'Monaco', monospace;
+            font-size: 0.7rem;
+            color: #888;
+            overflow-x: auto;
+        }
+        
+        /* Token Suggestions */
+        .token-suggestions {
+            margin-top: 15px;
+            background: rgba(255, 107, 107, 0.05);
+            border: 1px solid rgba(255, 107, 107, 0.2);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .suggestions-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #ff6b6b;
+            font-size: 0.85rem;
+        }
+        
+        .suggestions-title:hover {
+            background: rgba(255, 107, 107, 0.1);
+        }
+        
+        .suggestions-list {
+            display: none;
+            padding: 0 14px 14px;
+        }
+        
+        .token-suggestions.expanded .suggestions-list {
+            display: block;
+        }
+        
+        .suggestion-item {
+            display: flex;
+            gap: 10px;
+            padding: 12px;
+            margin-bottom: 8px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            border-left: 3px solid #888;
+        }
+        
+        .suggestion-item.priority-high {
+            border-left-color: #ff6b6b;
+        }
+        
+        .suggestion-item.priority-medium {
+            border-left-color: #ffd700;
+        }
+        
+        .suggestion-item.priority-warning {
+            border-left-color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+        }
+        
+        .suggestion-item.priority-info {
+            border-left-color: #00d9ff;
+        }
+        
+        .suggestion-icon {
+            font-size: 1.2rem;
+        }
+        
+        .suggestion-content {
+            flex: 1;
+        }
+        
+        .suggestion-title {
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+            font-size: 0.85rem;
+        }
+        
+        .suggestion-desc {
+            color: #aaa;
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+        
+        .suggestion-savings {
+            margin-top: 8px;
+            color: #00ff88;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
         /* Images Section */
         .images-section {
             margin-top: 16px;
@@ -1304,6 +1537,7 @@
 
                 // Use EventSource for proper SSE handling
                 const eventSource = new EventSource(`${API_URL}/chat/stream?${params}`);
+                let tokenInfo = null;
                 
                 eventSource.onmessage = function(event) {
                     try {
@@ -1318,6 +1552,8 @@
                             contentDiv.className = `message-content streaming ${isRtl ? 'rtl' : ''}`;
                             contentDiv.innerHTML = parseMarkdown(fullContent);
                             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                        } else if (data.type === 'token_info') {
+                            tokenInfo = data.data;
                         } else if (data.type === 'done') {
                             eventSource.close();
                             contentDiv.classList.remove('streaming');
@@ -1325,6 +1561,10 @@
                             contentDiv.innerHTML = parseMarkdown(fullContent);
                             if (sources.length > 0) {
                                 contentDiv.innerHTML += buildSourcesHtml(sources, fullContent);
+                            }
+                            // Add token info panel
+                            if (tokenInfo) {
+                                contentDiv.innerHTML += buildTokenInfoHtml(tokenInfo);
                             }
                             streamingBadge.classList.add('hidden');
                         } else if (data.type === 'error') {
@@ -1420,6 +1660,93 @@
             }
             
             return html;
+        }
+
+        function buildTokenInfoHtml(tokenInfo) {
+            const bd = tokenInfo.breakdown || {};
+            const totalInput = bd.system_prompt + bd.conversation_history + bd.document_context + bd.user_question;
+            
+            // Calculate percentages for the bar
+            const systemPct = totalInput > 0 ? (bd.system_prompt / totalInput * 100).toFixed(1) : 0;
+            const historyPct = totalInput > 0 ? (bd.conversation_history / totalInput * 100).toFixed(1) : 0;
+            const contextPct = totalInput > 0 ? (bd.document_context / totalInput * 100).toFixed(1) : 0;
+            const questionPct = totalInput > 0 ? (bd.user_question / totalInput * 100).toFixed(1) : 0;
+            
+            // Build suggestions HTML
+            let suggestionsHtml = '';
+            if (tokenInfo.suggestions && tokenInfo.suggestions.length > 0) {
+                suggestionsHtml = `
+                    <div class="token-suggestions">
+                        <div class="suggestions-title" onclick="this.parentElement.classList.toggle('expanded')">
+                            💡 Optimization Suggestions (${tokenInfo.suggestions.length})
+                            <span class="expand-icon">▼</span>
+                        </div>
+                        <div class="suggestions-list">
+                            ${tokenInfo.suggestions.map(s => `
+                                <div class="suggestion-item priority-${s.priority}">
+                                    <span class="suggestion-icon">${s.icon}</span>
+                                    <div class="suggestion-content">
+                                        <div class="suggestion-title">${s.title}</div>
+                                        <div class="suggestion-desc">${s.description}</div>
+                                        ${s.potential_savings ? `<div class="suggestion-savings">💰 Potential savings: ${s.potential_savings}</div>` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            return `
+                <div class="token-info-panel">
+                    <div class="token-header" onclick="this.parentElement.classList.toggle('expanded')">
+                        <span class="token-icon">📊</span>
+                        <span class="token-summary">
+                            <strong>${tokenInfo.total_tokens.toLocaleString()}</strong> tokens
+                            <span class="token-cost">≈ $${tokenInfo.cost.toFixed(4)}</span>
+                        </span>
+                        <span class="expand-icon">▼</span>
+                    </div>
+                    <div class="token-details">
+                        <div class="token-breakdown-visual">
+                            <div class="breakdown-bar">
+                                <div class="bar-segment system" style="width: ${systemPct}%" title="System: ${bd.system_prompt}"></div>
+                                <div class="bar-segment history" style="width: ${historyPct}%" title="History: ${bd.conversation_history}"></div>
+                                <div class="bar-segment context" style="width: ${contextPct}%" title="Context: ${bd.document_context}"></div>
+                                <div class="bar-segment question" style="width: ${questionPct}%" title="Question: ${bd.user_question}"></div>
+                            </div>
+                            <div class="breakdown-legend">
+                                <span class="legend-item"><span class="dot system"></span> System (${bd.system_prompt})</span>
+                                <span class="legend-item"><span class="dot history"></span> History (${bd.conversation_history})</span>
+                                <span class="legend-item"><span class="dot context"></span> Context (${bd.document_context})</span>
+                                <span class="legend-item"><span class="dot question"></span> Question (${bd.user_question})</span>
+                            </div>
+                        </div>
+                        <div class="token-stats">
+                            <div class="stat-row">
+                                <span>📥 Input tokens:</span>
+                                <span>${tokenInfo.input_tokens.toLocaleString()}</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>📤 Output tokens:</span>
+                                <span>${tokenInfo.output_tokens.toLocaleString()}</span>
+                            </div>
+                            <div class="stat-row total">
+                                <span>📊 Total:</span>
+                                <span>${tokenInfo.total_tokens.toLocaleString()}</span>
+                            </div>
+                            <div class="stat-row cost">
+                                <span>💰 Cost:</span>
+                                <span>$${tokenInfo.cost.toFixed(6)}</span>
+                            </div>
+                        </div>
+                        <div class="token-formula">
+                            <small>📐 ${tokenInfo.formula}</small>
+                        </div>
+                        ${suggestionsHtml}
+                    </div>
+                </div>
+            `;
         }
 
         function buildExportButtons(content) {
