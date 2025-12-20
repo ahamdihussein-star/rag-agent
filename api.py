@@ -2146,7 +2146,7 @@ def clear_pipeline_logs():
 @app.get("/monitor")
 def serve_monitor():
     """Serve the Pipeline Monitor dashboard"""
-    return FileResponse("templates/monitor.html")
+    return FileResponse("frontend/monitor.html")
 
 @app.get("/files")
 def list_files():
