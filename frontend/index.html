@@ -728,6 +728,37 @@
         .status.error { display: block; background: rgba(255, 107, 107, 0.2); color: #ff6b6b; }
         .status.loading { display: block; background: rgba(0, 217, 255, 0.2); color: #00d9ff; }
 
+        /* Chunker Badge */
+        .chunker-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-left: 6px;
+            animation: badgePop 0.3s ease-out;
+        }
+        
+        .chunker-badge.semantic {
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.3), rgba(75, 0, 130, 0.3));
+            color: #da70d6;
+            border: 1px solid rgba(218, 112, 214, 0.4);
+        }
+        
+        .chunker-badge.fallback {
+            background: linear-gradient(135deg, rgba(255, 165, 0, 0.3), rgba(255, 140, 0, 0.3));
+            color: #ffa500;
+            border: 1px solid rgba(255, 165, 0, 0.4);
+        }
+        
+        @keyframes badgePop {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
         /* Stats */
         .stats {
             display: grid;
@@ -1594,7 +1625,16 @@
                         progressPercent.textContent = '100%';
                         progressText.textContent = '✅ Complete!';
                         statusDiv.className = data.success ? 'status success' : 'status error';
-                        statusDiv.textContent = data.success ? `✅ ${data.message}` : `❌ ${data.message}`;
+                        
+                        // Create chunker badge
+                        let chunkerBadge = '';
+                        if (data.success && data.chunker_type) {
+                            const isSemantic = data.chunker_type === 'semantic';
+                            chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📏'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                        }
+                        statusDiv.innerHTML = data.success 
+                            ? `✅ ${data.message}${chunkerBadge}` 
+                            : `❌ ${data.message}`;
                         
                         if (data.success) { 
                             loadStats(); 
@@ -1687,7 +1727,14 @@
                             progressPercent.textContent = '100%';
                             progressText.textContent = '✅ Complete!';
                             statusDiv.className = 'status success';
-                            statusDiv.textContent = data.message;
+                            
+                            // Add chunker badge if available
+                            let chunkerBadge = '';
+                            if (data.chunker_type) {
+                                const isSemantic = data.chunker_type === 'semantic';
+                                chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📏'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                            }
+                            statusDiv.innerHTML = data.message + chunkerBadge;
                             input.value = '';
                             loadStats();
                             eventSource.close();
@@ -1735,7 +1782,14 @@
                             progressPercent.textContent = '100%';
                             progressText.textContent = '✅ Complete!';
                             statusDiv.className = 'status success';
-                            statusDiv.textContent = data.message;
+                            
+                            // Add chunker badge if available
+                            let chunkerBadge = '';
+                            if (data.chunker_type) {
+                                const isSemantic = data.chunker_type === 'semantic';
+                                chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📏'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                            }
+                            statusDiv.innerHTML = data.message + chunkerBadge;
                             input.value = '';
                             loadStats();
                             eventSource.close();
@@ -1800,7 +1854,14 @@
                         progressPercent.textContent = '100%';
                         progressText.textContent = '✅ Complete!';
                         statusDiv.className = 'status success';
-                        statusDiv.textContent = data.message;
+                        
+                        // Add chunker badge if available
+                        let chunkerBadge = '';
+                        if (data.chunker_type) {
+                            const isSemantic = data.chunker_type === 'semantic';
+                            chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📏'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                        }
+                        statusDiv.innerHTML = data.message + chunkerBadge;
                         input.value = '';
                         loadStats();
                         eventSource.close();

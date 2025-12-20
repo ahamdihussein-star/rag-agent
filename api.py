@@ -102,15 +102,20 @@ class IngestResponse(BaseModel):
     success: bool
     message: str
     chunks: int = 0
+    chunker_type: str = "semantic"
 
 class UrlRequest(BaseModel):
     url: str
 
 # ==================== Semantic Chunking ====================
 
-def smart_chunk_text(text: str, min_chunk_size: int = 100) -> List[str]:
+def smart_chunk_text(text: str, min_chunk_size: int = 100) -> tuple[List[str], str]:
+    """
+    Split text into semantic chunks.
+    Returns: (chunks, chunker_type) where chunker_type is 'semantic' or 'fallback'
+    """
     if len(text) < min_chunk_size:
-        return [text]
+        return [text], "semantic"
     
     try:
         chunks = semantic_chunker.split_text(text)
@@ -130,13 +135,13 @@ def smart_chunk_text(text: str, min_chunk_size: int = 100) -> List[str]:
             merged_chunks.append(current_chunk.strip())
         
         if len(merged_chunks) < 2 and len(text) > 2000:
-            return fallback_splitter.split_text(text)
+            return fallback_splitter.split_text(text), "fallback"
         
-        return merged_chunks
+        return merged_chunks, "semantic"
     
     except Exception as e:
         print(f"Semantic chunking failed: {e}, using fallback")
-        return fallback_splitter.split_text(text)
+        return fallback_splitter.split_text(text), "fallback"
 
 # ==================== BM25 Index Management ====================
 
@@ -624,9 +629,10 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
         "domain": domain_name
     }, images=images)
     
-    chunks = smart_chunk_text(full_text)
+    chunks, chunker_type = smart_chunk_text(full_text)
     
-    print(f"📦 Created {len(chunks)} semantic chunks for {source} (domain: {domain_name}, images: {len(images) if images else 0})")
+    chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+    print(f"📦 Created {len(chunks)} chunks using {chunker_emoji} {chunker_type} chunker for {source}")
     
     metadata_list = []
     for i, chunk in enumerate(chunks):
@@ -643,7 +649,7 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
             "summary": metadata.get("summary", ""),
             "parent_id": parent_id,
             "chunk_index": i,
-            "chunk_type": "semantic",
+            "chunk_type": chunker_type,
             "domain": domain_name
         }
         
@@ -658,7 +664,7 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
     
     add_to_bm25_index(chunks, metadata_list)
     
-    return len(chunks)
+    return len(chunks), chunker_type
 
 # ==================== API Endpoints ====================
 
@@ -702,11 +708,13 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
     
     yield progress_event("chunking", 45, "Creating semantic chunks...")
     
-    chunks = smart_chunk_text(full_text)
+    chunks, chunker_type = smart_chunk_text(full_text)
     total_chunks = len(chunks)
     
+    # Show chunker type in progress
+    chunker_display = "🧠 Semantic Chunker" if chunker_type == "semantic" else "📏 Fallback Splitter"
     img_count = len(images) if images else 0
-    yield progress_event("chunking", 50, f"Created {total_chunks} chunks, {img_count} images")
+    yield progress_event("chunking", 50, f"Created {total_chunks} chunks using {chunker_display}", chunker_type=chunker_type)
     
     metadata_list = []
     for i, chunk in enumerate(chunks):
@@ -726,7 +734,7 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
             "summary": metadata.get("summary", ""),
             "parent_id": parent_id,
             "chunk_index": i,
-            "chunk_type": "semantic",
+            "chunk_type": chunker_type,
             "domain": domain_name
         }
         
@@ -742,7 +750,9 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
     yield progress_event("bm25", 97, "Adding to BM25 index...")
     add_to_bm25_index(chunks, metadata_list)
     
-    yield done_event(f"✅ Ingested with {total_chunks} chunks, {img_count} images", total_chunks)
+    # Include chunker type in done message
+    chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+    yield done_event(f"✅ Ingested with {total_chunks} chunks {chunker_emoji}", total_chunks, chunker_type=chunker_type, images_count=img_count)
 
 # ==================== Streaming Scrape Endpoint ====================
 
@@ -851,13 +861,14 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                     
                     if full_text and len(full_text) > 100:
                         metadata = extract_metadata(full_text[:3000], "website")
-                        chunks = ingest_document_with_semantic_chunks(full_text, current_url, "website", "", metadata, images=images)
+                        chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, current_url, "website", "", metadata, images=images)
                         total_chunks += chunks
                         pages_scraped.append(current_url)
+                        chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
                         
                         yield progress_event("page_done", overall_progress,
-                            f"✓ Page {page_num}: {chunks} chunks, {len(images)} images",
-                            page_url=current_url, page_chunks=chunks, page_images=len(images))
+                            f"✓ Page {page_num}: {chunks} chunks {chunker_emoji}, {len(images)} images",
+                            page_url=current_url, page_chunks=chunks, page_images=len(images), chunker_type=chunker_type)
                     
                 except Exception as e:
                     yield progress_event("page_error", overall_progress,
@@ -1303,18 +1314,20 @@ async def upload_file(file: UploadFile = File(...)):
             documents = loader.load()
             full_text = "\n".join([doc.page_content for doc in documents])
             metadata = extract_metadata(full_text, "document")
-            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata, images=images)
+            chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata, images=images)
+            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks, {len(images)} images", chunks=chunks)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
         elif suffix == ".txt":
             loader = TextLoader(tmp_path)
             documents = loader.load()
             full_text = "\n".join([doc.page_content for doc in documents])
             metadata = extract_metadata(full_text, "document")
-            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata)
+            chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata)
+            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} semantic chunks", chunks=chunks)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         elif suffix == ".docx":
             from docx import Document as DocxDocument
@@ -1328,9 +1341,10 @@ async def upload_file(file: UploadFile = File(...)):
             doc = DocxDocument(tmp_path)
             full_text = "\n".join([para.text for para in doc.paragraphs if para.text])
             metadata = extract_metadata(full_text, "document")
-            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata, images=images)
+            chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata, images=images)
+            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks, {len(images)} images", chunks=chunks)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
         elif suffix in [".xlsx", ".xls"]:
             from openpyxl import load_workbook
@@ -1344,9 +1358,10 @@ async def upload_file(file: UploadFile = File(...)):
                     if row_text.strip():
                         full_text += row_text + "\n"
             metadata = extract_metadata(full_text, "spreadsheet")
-            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "spreadsheet", file_path, metadata)
+            chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "spreadsheet", file_path, metadata)
+            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} semantic chunks", chunks=chunks)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         elif suffix == ".pptx":
             from pptx import Presentation
@@ -1365,9 +1380,10 @@ async def upload_file(file: UploadFile = File(...)):
                     if hasattr(shape, "text") and shape.text:
                         full_text += shape.text + "\n"
             metadata = extract_metadata(full_text, "presentation")
-            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "presentation", file_path, metadata, images=images)
+            chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "presentation", file_path, metadata, images=images)
+            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks, {len(images)} images", chunks=chunks)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
         elif suffix in [".mp4", ".mp3", ".wav", ".m4a", ".webm", ".avi", ".mov"]:
             # Check file size (Whisper API limit is 25MB)
@@ -1389,9 +1405,10 @@ async def upload_file(file: UploadFile = File(...)):
             
             full_text = transcription.text
             metadata = extract_metadata(full_text, "video")
-            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "video", file_path, metadata)
+            chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "video", file_path, metadata)
+            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Transcribed {file.filename} with {chunks} semantic chunks", chunks=chunks)
+            return IngestResponse(success=True, message=f"✅ Transcribed {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         elif suffix in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
             import base64
@@ -1413,9 +1430,10 @@ async def upload_file(file: UploadFile = File(...)):
             response = llm.invoke([message])
             full_text = response.content
             metadata = extract_metadata(full_text, "image")
-            chunks = ingest_document_with_semantic_chunks(full_text, file.filename, "image", file_path, metadata)
+            chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "image", file_path, metadata)
+            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Processed {file.filename} with {chunks} semantic chunks", chunks=chunks)
+            return IngestResponse(success=True, message=f"✅ Processed {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         else:
             os.unlink(tmp_path)
@@ -1455,9 +1473,10 @@ def scrape_website(request: UrlRequest):
         from urllib.parse import urlparse
         domain = urlparse(url).netloc
         
-        chunks = ingest_document_with_semantic_chunks(full_text, url, "website", "", metadata, images=images)
+        chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, url, "website", "", metadata, images=images)
+        chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
         
-        return IngestResponse(success=True, message=f"✅ Scraped {domain} with {chunks} chunks, {len(images)} images", chunks=chunks)
+        return IngestResponse(success=True, message=f"✅ Scraped {domain} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
     
     except Exception as e:
         return IngestResponse(success=False, message=str(e))
@@ -1662,10 +1681,11 @@ def scrape_website_recursive(request: RecursiveScrapeRequest):
             # Ingest the content with images
             try:
                 metadata = extract_metadata(text_content, "website")
-                chunks = ingest_document_with_semantic_chunks(text_content, current_url, "website", "", metadata, images=images)
+                chunks, chunker_type = ingest_document_with_semantic_chunks(text_content, current_url, "website", "", metadata, images=images)
                 total_chunks += chunks
                 pages_scraped.append(current_url)
-                print(f"✅ Scraped: {current_url} ({chunks} chunks, {len(images)} images)")
+                chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+                print(f"✅ Scraped: {current_url} ({chunks} chunks {chunker_emoji}, {len(images)} images)")
             except Exception as e:
                 print(f"Error ingesting {current_url}: {e}")
                 continue
@@ -1727,9 +1747,10 @@ def process_youtube(request: UrlRequest):
             return IngestResponse(success=False, message="No transcript available")
         
         metadata = extract_metadata(full_text, "youtube video")
-        chunks = ingest_document_with_semantic_chunks(full_text, url, "youtube", "", metadata)
+        chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, url, "youtube", "", metadata)
+        chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
         
-        return IngestResponse(success=True, message=f"✅ Processed YouTube with {chunks} semantic chunks", chunks=chunks)
+        return IngestResponse(success=True, message=f"✅ Processed YouTube with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
     
     except Exception as e:
         return IngestResponse(success=False, message=str(e))
