@@ -231,6 +231,261 @@ def save_pipeline_log(log: dict):
 # Current active pipelines (for real-time monitoring)
 active_pipelines: Dict[str, PipelineTracker] = {}
 
+# ==================== Cost Monitor ====================
+
+# API Pricing (as of December 2024)
+API_PRICING = {
+    "openai": {
+        "text-embedding-3-large": {
+            "price_per_million_tokens": 0.13,
+            "unit": "tokens"
+        },
+        "text-embedding-3-small": {
+            "price_per_million_tokens": 0.02,
+            "unit": "tokens"
+        },
+        "gpt-4o": {
+            "input_price_per_million_tokens": 2.50,
+            "output_price_per_million_tokens": 10.00,
+            "unit": "tokens"
+        },
+        "gpt-4o-mini": {
+            "input_price_per_million_tokens": 0.15,
+            "output_price_per_million_tokens": 0.60,
+            "unit": "tokens"
+        },
+        "whisper-1": {
+            "price_per_minute": 0.006,
+            "unit": "minutes"
+        }
+    },
+    "cohere": {
+        "rerank-v3.5": {
+            "price_per_search": 0.0005,
+            "unit": "searches"
+        }
+    },
+    "pinecone": {
+        "serverless": {
+            "price_per_query": 0.0,  # Free tier: 100K queries/month
+            "unit": "queries"
+        }
+    }
+}
+
+# Cost data storage
+COST_LOG_FILE = os.path.join(DATA_DIR, "cost_logs.json")
+COST_SUMMARY_FILE = os.path.join(DATA_DIR, "cost_summary.json")
+
+@dataclass
+class CostEntry:
+    """Represents a single cost entry"""
+    id: str
+    timestamp: str
+    service: str  # openai, cohere, pinecone
+    model: str
+    operation: str  # embedding, generation, transcription, reranking
+    quantity: float  # tokens, minutes, searches
+    unit: str
+    unit_price: float
+    total_cost: float
+    source: str = ""  # document name or query
+    pipeline_id: str = ""
+    details: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp,
+            "service": self.service,
+            "model": self.model,
+            "operation": self.operation,
+            "quantity": self.quantity,
+            "unit": self.unit,
+            "unit_price": self.unit_price,
+            "total_cost": self.total_cost,
+            "source": self.source,
+            "pipeline_id": self.pipeline_id,
+            "details": self.details
+        }
+
+class CostTracker:
+    """Track API costs for monitoring"""
+    
+    @staticmethod
+    def estimate_tokens(text: str) -> int:
+        """Rough estimate: ~4 characters per token for English"""
+        return len(text) // 4
+    
+    @staticmethod
+    def calculate_embedding_cost(text: str, model: str = "text-embedding-3-large") -> dict:
+        """Calculate cost for embedding text"""
+        tokens = CostTracker.estimate_tokens(text)
+        pricing = API_PRICING["openai"].get(model, API_PRICING["openai"]["text-embedding-3-large"])
+        cost = (tokens / 1_000_000) * pricing["price_per_million_tokens"]
+        
+        return {
+            "tokens": tokens,
+            "cost": round(cost, 8),
+            "model": model,
+            "formula": f"({tokens} ÷ 1,000,000) × ${pricing['price_per_million_tokens']}"
+        }
+    
+    @staticmethod
+    def calculate_llm_cost(input_text: str, output_text: str, model: str = "gpt-4o") -> dict:
+        """Calculate cost for LLM generation"""
+        input_tokens = CostTracker.estimate_tokens(input_text)
+        output_tokens = CostTracker.estimate_tokens(output_text)
+        pricing = API_PRICING["openai"].get(model, API_PRICING["openai"]["gpt-4o"])
+        
+        input_cost = (input_tokens / 1_000_000) * pricing["input_price_per_million_tokens"]
+        output_cost = (output_tokens / 1_000_000) * pricing["output_price_per_million_tokens"]
+        total_cost = input_cost + output_cost
+        
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+            "input_cost": round(input_cost, 8),
+            "output_cost": round(output_cost, 8),
+            "total_cost": round(total_cost, 8),
+            "model": model,
+            "formula": f"Input: ({input_tokens} ÷ 1M) × ${pricing['input_price_per_million_tokens']} + Output: ({output_tokens} ÷ 1M) × ${pricing['output_price_per_million_tokens']}"
+        }
+    
+    @staticmethod
+    def calculate_whisper_cost(duration_seconds: float) -> dict:
+        """Calculate cost for Whisper transcription"""
+        duration_minutes = duration_seconds / 60
+        pricing = API_PRICING["openai"]["whisper-1"]
+        cost = duration_minutes * pricing["price_per_minute"]
+        
+        return {
+            "duration_seconds": duration_seconds,
+            "duration_minutes": round(duration_minutes, 2),
+            "cost": round(cost, 8),
+            "model": "whisper-1",
+            "formula": f"{round(duration_minutes, 2)} minutes × ${pricing['price_per_minute']}/min"
+        }
+    
+    @staticmethod
+    def calculate_rerank_cost(num_searches: int = 1) -> dict:
+        """Calculate cost for Cohere reranking"""
+        pricing = API_PRICING["cohere"]["rerank-v3.5"]
+        cost = num_searches * pricing["price_per_search"]
+        
+        return {
+            "searches": num_searches,
+            "cost": round(cost, 8),
+            "model": "rerank-v3.5",
+            "formula": f"{num_searches} × ${pricing['price_per_search']}/search"
+        }
+    
+    @staticmethod
+    def log_cost(service: str, model: str, operation: str, quantity: float, 
+                 unit: str, unit_price: float, total_cost: float,
+                 source: str = "", pipeline_id: str = "", **details):
+        """Log a cost entry"""
+        entry = CostEntry(
+            id=f"cost_{uuid.uuid4().hex[:12]}",
+            timestamp=datetime.now().isoformat(),
+            service=service,
+            model=model,
+            operation=operation,
+            quantity=quantity,
+            unit=unit,
+            unit_price=unit_price,
+            total_cost=total_cost,
+            source=source,
+            pipeline_id=pipeline_id,
+            details=details
+        )
+        
+        # Save to log
+        save_cost_log(entry.to_dict())
+        
+        # Update summary
+        update_cost_summary(entry)
+        
+        return entry
+
+def load_cost_logs() -> List[dict]:
+    """Load cost logs from file"""
+    if os.path.exists(COST_LOG_FILE):
+        try:
+            with open(COST_LOG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_cost_log(entry: dict):
+    """Save a cost log entry"""
+    logs = load_cost_logs()
+    logs.append(entry)
+    # Keep last 500 entries
+    if len(logs) > 500:
+        logs = logs[-500:]
+    with open(COST_LOG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(logs, f, indent=2)
+
+def load_cost_summary() -> dict:
+    """Load cost summary"""
+    if os.path.exists(COST_SUMMARY_FILE):
+        try:
+            with open(COST_SUMMARY_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {
+        "total_cost": 0,
+        "by_service": {},
+        "by_operation": {},
+        "by_day": {},
+        "last_updated": None
+    }
+
+def save_cost_summary(summary: dict):
+    """Save cost summary"""
+    with open(COST_SUMMARY_FILE, 'w', encoding='utf-8') as f:
+        json.dump(summary, f, indent=2)
+
+def update_cost_summary(entry: CostEntry):
+    """Update cost summary with new entry"""
+    summary = load_cost_summary()
+    
+    # Total cost
+    summary["total_cost"] = round(summary.get("total_cost", 0) + entry.total_cost, 8)
+    
+    # By service
+    if entry.service not in summary["by_service"]:
+        summary["by_service"][entry.service] = {"cost": 0, "count": 0}
+    summary["by_service"][entry.service]["cost"] = round(
+        summary["by_service"][entry.service]["cost"] + entry.total_cost, 8
+    )
+    summary["by_service"][entry.service]["count"] += 1
+    
+    # By operation
+    if entry.operation not in summary["by_operation"]:
+        summary["by_operation"][entry.operation] = {"cost": 0, "count": 0}
+    summary["by_operation"][entry.operation]["cost"] = round(
+        summary["by_operation"][entry.operation]["cost"] + entry.total_cost, 8
+    )
+    summary["by_operation"][entry.operation]["count"] += 1
+    
+    # By day
+    day = entry.timestamp[:10]  # YYYY-MM-DD
+    if day not in summary["by_day"]:
+        summary["by_day"][day] = {"cost": 0, "count": 0}
+    summary["by_day"][day]["cost"] = round(
+        summary["by_day"][day]["cost"] + entry.total_cost, 8
+    )
+    summary["by_day"][day]["count"] += 1
+    
+    summary["last_updated"] = datetime.now().isoformat()
+    
+    save_cost_summary(summary)
+
 # ==================== Semantic Chunking ====================
 
 def smart_chunk_text(text: str, min_chunk_size: int = 100) -> tuple[List[str], str]:
@@ -408,7 +663,7 @@ def list_all_conversations() -> List[dict]:
 
 # ==================== Retrieval Functions ====================
 
-def rerank_results(query: str, documents: List[dict], top_n: int = 5) -> List[dict]:
+def rerank_results(query: str, documents: List[dict], top_n: int = 5, source: str = "") -> List[dict]:
     if not documents:
         return []
     
@@ -424,6 +679,20 @@ def rerank_results(query: str, documents: List[dict], top_n: int = 5) -> List[di
             query=query,
             documents=texts,
             top_n=min(top_n, len(texts))
+        )
+        
+        # Log reranking cost
+        rerank_calc = CostTracker.calculate_rerank_cost(1)
+        CostTracker.log_cost(
+            service="cohere",
+            model="rerank-v3.5",
+            operation="reranking",
+            quantity=1,
+            unit="searches",
+            unit_price=API_PRICING["cohere"]["rerank-v3.5"]["price_per_search"],
+            total_cost=rerank_calc["cost"],
+            source=source or query[:50],
+            documents_count=len(texts)
         )
         
         reranked = []
@@ -443,6 +712,21 @@ def rerank_results(query: str, documents: List[dict], top_n: int = 5) -> List[di
 
 def hybrid_search(query: str, top_k: int = 10, source_filter: dict = None, tracker: PipelineTracker = None) -> List[dict]:
     """Search in ALL sources (documents, websites, youtube, memory)"""
+    
+    # Calculate and log query embedding cost
+    embed_calc = CostTracker.calculate_embedding_cost(query)
+    CostTracker.log_cost(
+        service="openai",
+        model="text-embedding-3-large",
+        operation="query_embedding",
+        quantity=embed_calc["tokens"],
+        unit="tokens",
+        unit_price=API_PRICING["openai"]["text-embedding-3-large"]["price_per_million_tokens"],
+        total_cost=embed_calc["cost"],
+        source=query[:50],
+        pipeline_id=tracker.id if tracker else ""
+    )
+    
     query_vector = embeddings.embed_query(query)
     
     # دور في كل المصادر (بما فيهم memory)
@@ -824,6 +1108,9 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
         # Step 3: Embedding
         tracker.start_step("embed")
         metadata_list = []
+        total_embed_cost = 0
+        total_tokens = 0
+        
         for i, chunk in enumerate(chunks):
             enhanced_text = f"{domain_name} - {chunk}" if domain_name else chunk
             
@@ -841,6 +1128,11 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
                 "domain": domain_name
             }
             
+            # Calculate embedding cost
+            embed_calc = CostTracker.calculate_embedding_cost(chunk)
+            total_embed_cost += embed_calc["cost"]
+            total_tokens += embed_calc["tokens"]
+            
             vector = embeddings.embed_query(chunk)
             
             # Step 4: Store vectors (inside loop for first chunk only to mark timing)
@@ -856,6 +1148,20 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
             
             metadata_list.append(chunk_metadata)
         
+        # Log embedding cost
+        CostTracker.log_cost(
+            service="openai",
+            model="text-embedding-3-large",
+            operation="embedding",
+            quantity=total_tokens,
+            unit="tokens",
+            unit_price=API_PRICING["openai"]["text-embedding-3-large"]["price_per_million_tokens"],
+            total_cost=total_embed_cost,
+            source=source,
+            pipeline_id=tracker.id,
+            chunks=len(chunks)
+        )
+        
         tracker.complete_step("store_vectors", vectors_stored=len(chunks), index="pinecone")
         
         # Step 5: Store BM25
@@ -867,7 +1173,8 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
         tracker.finish(
             total_chunks=len(chunks),
             chunker_type=chunker_type,
-            images_count=len(images) if images else 0
+            images_count=len(images) if images else 0,
+            embedding_cost=total_embed_cost
         )
         
         return len(chunks), chunker_type
@@ -1334,16 +1641,34 @@ Response:"""
     response = llm.invoke(prompt)
     answer = response.content
     
+    # Calculate and log LLM cost
+    llm_calc = CostTracker.calculate_llm_cost(prompt, answer, "gpt-4o")
+    CostTracker.log_cost(
+        service="openai",
+        model="gpt-4o",
+        operation="generation",
+        quantity=llm_calc["total_tokens"],
+        unit="tokens",
+        unit_price=0,  # Complex pricing (input/output different)
+        total_cost=llm_calc["total_cost"],
+        source=question[:50],
+        pipeline_id=tracker.id if tracker else "",
+        input_tokens=llm_calc["input_tokens"],
+        output_tokens=llm_calc["output_tokens"]
+    )
+    
     # Complete pipeline tracking
     if tracker:
         tracker.complete_step("generate", 
             model="gpt-4o",
             prompt_length=len(prompt),
-            response_length=len(answer)
+            response_length=len(answer),
+            cost=llm_calc["total_cost"]
         )
         tracker.finish(
             sources_count=len(sources),
-            has_images=len(images) > 0
+            has_images=len(images) > 0,
+            total_cost=llm_calc["total_cost"]
         )
         if tracker.id in active_pipelines:
             del active_pipelines[tracker.id]
@@ -2143,6 +2468,112 @@ def clear_pipeline_logs():
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+# ==================== Cost Monitor Endpoints ====================
+
+@app.get("/cost/summary")
+def get_cost_summary():
+    """Get overall cost summary"""
+    try:
+        summary = load_cost_summary()
+        return summary
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/cost/logs")
+def get_cost_logs(limit: int = 50, service: str = None, operation: str = None):
+    """Get cost log entries"""
+    try:
+        logs = load_cost_logs()
+        
+        # Filter by service
+        if service:
+            logs = [l for l in logs if l.get("service") == service]
+        
+        # Filter by operation
+        if operation:
+            logs = [l for l in logs if l.get("operation") == operation]
+        
+        # Sort by timestamp (newest first)
+        logs = sorted(logs, key=lambda x: x.get("timestamp", ""), reverse=True)
+        
+        return {
+            "logs": logs[:limit],
+            "total": len(logs)
+        }
+    except Exception as e:
+        return {"logs": [], "total": 0, "error": str(e)}
+
+@app.get("/cost/by-document")
+def get_cost_by_document():
+    """Get costs grouped by document/source"""
+    try:
+        logs = load_cost_logs()
+        
+        by_source = {}
+        for log in logs:
+            source = log.get("source", "Unknown")
+            if source not in by_source:
+                by_source[source] = {
+                    "total_cost": 0,
+                    "operations": {},
+                    "count": 0
+                }
+            by_source[source]["total_cost"] += log.get("total_cost", 0)
+            by_source[source]["count"] += 1
+            
+            operation = log.get("operation", "unknown")
+            if operation not in by_source[source]["operations"]:
+                by_source[source]["operations"][operation] = 0
+            by_source[source]["operations"][operation] += log.get("total_cost", 0)
+        
+        # Round all costs
+        for source in by_source:
+            by_source[source]["total_cost"] = round(by_source[source]["total_cost"], 6)
+            for op in by_source[source]["operations"]:
+                by_source[source]["operations"][op] = round(by_source[source]["operations"][op], 6)
+        
+        return {"by_document": by_source}
+    except Exception as e:
+        return {"by_document": {}, "error": str(e)}
+
+@app.get("/cost/pricing")
+def get_pricing():
+    """Get current API pricing"""
+    return {"pricing": API_PRICING}
+
+@app.get("/cost/calculate")
+def calculate_cost(text: str = "", tokens: int = 0, operation: str = "embedding"):
+    """Calculate estimated cost for a given operation"""
+    try:
+        if operation == "embedding":
+            if text:
+                result = CostTracker.calculate_embedding_cost(text)
+            elif tokens:
+                cost = (tokens / 1_000_000) * API_PRICING["openai"]["text-embedding-3-large"]["price_per_million_tokens"]
+                result = {"tokens": tokens, "cost": round(cost, 8)}
+            else:
+                result = {"error": "Provide text or tokens"}
+        elif operation == "rerank":
+            result = CostTracker.calculate_rerank_cost(1)
+        else:
+            result = {"error": f"Unknown operation: {operation}"}
+        
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.delete("/cost/logs")
+def clear_cost_logs():
+    """Clear all cost logs"""
+    try:
+        if os.path.exists(COST_LOG_FILE):
+            os.remove(COST_LOG_FILE)
+        if os.path.exists(COST_SUMMARY_FILE):
+            os.remove(COST_SUMMARY_FILE)
+        return {"success": True, "message": "Cost logs cleared"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.get("/monitor")
 def serve_monitor():
     """Serve the Pipeline Monitor dashboard"""
@@ -2516,8 +2947,8 @@ async def generate_stream(question: str, user_id: str, conversation_id: str):
         user_messages = [m['content'] for m in conv['messages'] if m['role'] == 'user'][-3:]
         search_query = " ".join(user_messages)
     
-    # Get document context (من كل المصادر بما فيهم memory) - disable tracking for streaming
-    doc_context, sources, images, tracker = get_document_context_with_sources(search_query, track_pipeline=False)
+    # Get document context WITH tracking enabled for retrieval
+    doc_context, sources, images, tracker = get_document_context_with_sources(search_query, track_pipeline=True)
     
     # Send sources first (no need to send images separately now)
     sources_json = json.dumps({"type": "sources", "data": sources, "conversation_id": conversation_id})
@@ -2567,6 +2998,10 @@ Example response format:
 
 Response:"""
     
+    # Start generate step tracking
+    if tracker:
+        tracker.start_step("generate")
+    
     # Stream the response
     full_response = ""
     
@@ -2580,6 +3015,38 @@ Response:"""
                 chunk_json = json.dumps({"type": "chunk", "data": chunk.content})
                 yield f"data: {chunk_json}\n\n"
         
+        # Calculate and log LLM cost
+        llm_calc = CostTracker.calculate_llm_cost(prompt, full_response, "gpt-4o")
+        CostTracker.log_cost(
+            service="openai",
+            model="gpt-4o",
+            operation="generation",
+            quantity=llm_calc["total_tokens"],
+            unit="tokens",
+            unit_price=0,
+            total_cost=llm_calc["total_cost"],
+            source=question[:50],
+            pipeline_id=tracker.id if tracker else "",
+            input_tokens=llm_calc["input_tokens"],
+            output_tokens=llm_calc["output_tokens"]
+        )
+        
+        # Complete pipeline tracking
+        if tracker:
+            tracker.complete_step("generate", 
+                model="gpt-4o",
+                prompt_length=len(prompt),
+                response_length=len(full_response),
+                cost=llm_calc["total_cost"]
+            )
+            tracker.finish(
+                sources_count=len(sources),
+                has_images=len(images) > 0,
+                total_cost=llm_calc["total_cost"]
+            )
+            if tracker.id in active_pipelines:
+                del active_pipelines[tracker.id]
+        
         # Send done signal
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         
@@ -2590,6 +3057,11 @@ Response:"""
             save_to_memory(question, full_response, user_id)
             
     except Exception as e:
+        if tracker:
+            tracker.error_step("generate", str(e))
+            tracker.finish(error=str(e))
+            if tracker.id in active_pipelines:
+                del active_pipelines[tracker.id]
         error_json = json.dumps({"type": "error", "data": str(e)})
         yield f"data: {error_json}\n\n"
 
