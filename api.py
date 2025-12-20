@@ -8,7 +8,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_experimental.text_splitter import SemanticChunker
 from pinecone import Pinecone
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
 from youtube_transcript_api import YouTubeTranscriptApi
 from bs4 import BeautifulSoup
 from rank_bm25 import BM25Okapi
@@ -106,6 +106,130 @@ class IngestResponse(BaseModel):
 
 class UrlRequest(BaseModel):
     url: str
+
+# ==================== Pipeline Monitor ====================
+
+import time
+from dataclasses import dataclass, field, asdict
+from typing import Dict, Any
+from collections import deque
+
+# Pipeline data storage
+PIPELINE_LOG_FILE = os.path.join(DATA_DIR, "pipeline_logs.json")
+MAX_PIPELINE_LOGS = 100  # Keep last 100 pipeline runs
+
+@dataclass
+class PipelineStep:
+    """Represents a single step in the pipeline"""
+    name: str
+    status: str = "pending"  # pending, running, completed, error
+    start_time: float = 0
+    end_time: float = 0
+    duration_ms: float = 0
+    details: Dict[str, Any] = field(default_factory=dict)
+    
+    def start(self):
+        self.status = "running"
+        self.start_time = time.time()
+    
+    def complete(self, **details):
+        self.status = "completed"
+        self.end_time = time.time()
+        self.duration_ms = round((self.end_time - self.start_time) * 1000, 2)
+        self.details.update(details)
+    
+    def error(self, message: str):
+        self.status = "error"
+        self.end_time = time.time()
+        self.duration_ms = round((self.end_time - self.start_time) * 1000, 2)
+        self.details["error"] = message
+    
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "status": self.status,
+            "duration_ms": self.duration_ms,
+            "details": self.details
+        }
+
+class PipelineTracker:
+    """Tracks pipeline execution for monitoring"""
+    
+    def __init__(self, pipeline_type: str, source: str = ""):
+        self.id = f"pipe_{uuid.uuid4().hex[:12]}"
+        self.pipeline_type = pipeline_type  # "ingestion" or "retrieval"
+        self.source = source
+        self.steps: Dict[str, PipelineStep] = {}
+        self.start_time = time.time()
+        self.end_time = 0
+        self.total_duration_ms = 0
+        self.status = "running"
+        self.metadata: Dict[str, Any] = {}
+        
+        # Define steps based on pipeline type
+        if pipeline_type == "ingestion":
+            step_names = ["extract", "chunk", "embed", "store_vectors", "store_bm25"]
+        else:  # retrieval
+            step_names = ["embed_query", "pinecone_search", "bm25_search", "rrf_merge", "rerank", "generate"]
+        
+        for name in step_names:
+            self.steps[name] = PipelineStep(name=name)
+    
+    def start_step(self, step_name: str):
+        if step_name in self.steps:
+            self.steps[step_name].start()
+    
+    def complete_step(self, step_name: str, **details):
+        if step_name in self.steps:
+            self.steps[step_name].complete(**details)
+    
+    def error_step(self, step_name: str, message: str):
+        if step_name in self.steps:
+            self.steps[step_name].error(message)
+    
+    def finish(self, **metadata):
+        self.end_time = time.time()
+        self.total_duration_ms = round((self.end_time - self.start_time) * 1000, 2)
+        self.status = "completed"
+        self.metadata.update(metadata)
+        
+        # Save to log
+        save_pipeline_log(self.to_dict())
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "pipeline_type": self.pipeline_type,
+            "source": self.source,
+            "status": self.status,
+            "start_time": datetime.fromtimestamp(self.start_time).isoformat(),
+            "total_duration_ms": self.total_duration_ms,
+            "steps": {name: step.to_dict() for name, step in self.steps.items()},
+            "metadata": self.metadata
+        }
+
+def load_pipeline_logs() -> List[dict]:
+    """Load pipeline logs from file"""
+    if os.path.exists(PIPELINE_LOG_FILE):
+        try:
+            with open(PIPELINE_LOG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_pipeline_log(log: dict):
+    """Save a pipeline log entry"""
+    logs = load_pipeline_logs()
+    logs.append(log)
+    # Keep only last MAX_PIPELINE_LOGS entries
+    if len(logs) > MAX_PIPELINE_LOGS:
+        logs = logs[-MAX_PIPELINE_LOGS:]
+    with open(PIPELINE_LOG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(logs, f, indent=2)
+
+# Current active pipelines (for real-time monitoring)
+active_pipelines: Dict[str, PipelineTracker] = {}
 
 # ==================== Semantic Chunking ====================
 
@@ -317,7 +441,7 @@ def rerank_results(query: str, documents: List[dict], top_n: int = 5) -> List[di
         print(f"Reranking error: {e}")
         return documents[:top_n]
 
-def hybrid_search(query: str, top_k: int = 10, source_filter: dict = None) -> List[dict]:
+def hybrid_search(query: str, top_k: int = 10, source_filter: dict = None, tracker: PipelineTracker = None) -> List[dict]:
     """Search in ALL sources (documents, websites, youtube, memory)"""
     query_vector = embeddings.embed_query(query)
     
@@ -325,6 +449,10 @@ def hybrid_search(query: str, top_k: int = 10, source_filter: dict = None) -> Li
     filter_dict = source_filter if source_filter else {}
     
     # Semantic search in Pinecone
+    if tracker:
+        tracker.complete_step("pinecone_search", top_k=top_k)
+        tracker.start_step("bm25_search")
+    
     if filter_dict:
         semantic_results = index.query(
             vector=query_vector,
@@ -339,8 +467,13 @@ def hybrid_search(query: str, top_k: int = 10, source_filter: dict = None) -> Li
             include_metadata=True
         )
     
+    pinecone_count = len(semantic_results.get('matches', []))
+    
     # BM25 keyword search
     bm25_results = search_bm25(query, top_k=top_k)
+    
+    if tracker:
+        tracker.complete_step("bm25_search", results_count=len(bm25_results))
     
     # Combine results
     combined = {}
@@ -391,144 +524,179 @@ def hybrid_search(query: str, top_k: int = 10, source_filter: dict = None) -> Li
     sorted_results = sorted(combined.values(), key=lambda x: x['score'], reverse=True)
     return sorted_results[:top_k]
 
-def get_document_context_with_sources(query: str, top_k: int = 10, display_min_score: float = 0.30):
+def get_document_context_with_sources(query: str, top_k: int = 10, display_min_score: float = 0.30, track_pipeline: bool = True):
     """Get context from ALL sources including memory and images"""
     
-    # دور في كل المصادر (بدون filter)
-    search_results = hybrid_search(query, top_k=top_k, source_filter=None)
-    reranked_docs = rerank_results(query, search_results, top_n=5)
+    # Start pipeline tracking
+    tracker = None
+    if track_pipeline:
+        tracker = PipelineTracker("retrieval", query[:50])
+        active_pipelines[tracker.id] = tracker
     
-    print(f"🔍 Search results count: {len(search_results)}")
-    print(f"🔍 Reranked docs count: {len(reranked_docs)}")
-    
-    parent_ids = []
-    sources_info = []
-    memory_contexts = []
-    chunk_texts = {}  # Store chunk texts as fallback
-    all_images = []  # Store images from relevant documents
-    
-    for doc in reranked_docs:
-        metadata = doc.get('metadata', {})
-        score = doc.get('score', 0)
-        doc_type = metadata.get('type', 'document')
-        chunk_text = doc.get('text', '') or metadata.get('text', '')  # Try both places
+    try:
+        # Step 1: Embed Query
+        if tracker:
+            tracker.start_step("embed_query")
         
-        print(f"📄 Doc type: {doc_type}, Score: {score}, Has text: {bool(chunk_text)}, Text length: {len(chunk_text) if chunk_text else 0}")
+        # دور في كل المصادر (بدون filter)
+        # Step 2 & 3: Pinecone + BM25 search (inside hybrid_search)
+        if tracker:
+            tracker.complete_step("embed_query", model="text-embedding-3-large")
+            tracker.start_step("pinecone_search")
         
-        # Handle Memory
-        if doc_type == 'memory':
-            if score >= display_min_score:
-                question = metadata.get('question', '')
-                answer = metadata.get('answer', '')
-                memory_contexts.append({
-                    'question': question,
-                    'answer': answer,
-                    'score': score
-                })
-                sources_info.append({
-                    "type": "memory",
-                    "title": f"Previous Q&A: {question[:50]}...",
-                    "source": "Memory",
-                    "score": round(score, 2),
-                    "download_url": None
-                })
-        else:
-            # Handle Documents/Websites/YouTube
-            parent_id = metadata.get('parent_id')
+        search_results = hybrid_search(query, top_k=top_k, source_filter=None, tracker=tracker)
+        
+        if tracker:
+            tracker.start_step("rrf_merge")
+            tracker.complete_step("rrf_merge", unique_results=len(search_results))
+        
+        # Step 5: Reranking
+        if tracker:
+            tracker.start_step("rerank")
+        reranked_docs = rerank_results(query, search_results, top_n=5)
+        if tracker:
+            tracker.complete_step("rerank", model="rerank-v3.5", input_docs=len(search_results), output_docs=len(reranked_docs))
+        
+        print(f"🔍 Search results count: {len(search_results)}")
+        print(f"🔍 Reranked docs count: {len(reranked_docs)}")
+        
+        parent_ids = []
+        sources_info = []
+        memory_contexts = []
+        chunk_texts = {}  # Store chunk texts as fallback
+        all_images = []  # Store images from relevant documents
+        
+        for doc in reranked_docs:
+            metadata = doc.get('metadata', {})
+            score = doc.get('score', 0)
+            doc_type = metadata.get('type', 'document')
+            chunk_text = doc.get('text', '') or metadata.get('text', '')  # Try both places
             
-            if parent_id and parent_id not in parent_ids:
-                parent_ids.append(parent_id)
-                
-                # Store chunk text as fallback
-                if chunk_text:
-                    if parent_id not in chunk_texts:
-                        chunk_texts[parent_id] = {
-                            'title': metadata.get('title', metadata.get('filename', 'Document')),
-                            'texts': []
-                        }
-                    chunk_texts[parent_id]['texts'].append(chunk_text)
-                
+            print(f"📄 Doc type: {doc_type}, Score: {score}, Has text: {bool(chunk_text)}, Text length: {len(chunk_text) if chunk_text else 0}")
+            
+            # Handle Memory
+            if doc_type == 'memory':
                 if score >= display_min_score:
-                    source_url = metadata.get('source', 'Unknown')
-                    source_title = metadata.get('title', metadata.get('filename', source_url))
-                    domain = metadata.get('domain', '')
-                    file_path = metadata.get('file_path', '')
-                    
-                    # Add domain to title for clarity
-                    if domain and domain.lower() not in source_title.lower():
-                        source_title = f"{domain} - {source_title}"
-                    
-                    download_url = None
-                    if file_path and os.path.exists(file_path):
-                        filename = os.path.basename(file_path)
-                        download_url = f"/download/{filename}"
-                    
-                    sources_info.append({
-                        "type": doc_type,
-                        "title": source_title,
-                        "source": source_url,
-                        "score": round(score, 2),
-                        "download_url": download_url
+                    question = metadata.get('question', '')
+                    answer = metadata.get('answer', '')
+                    memory_contexts.append({
+                        'question': question,
+                        'answer': answer,
+                        'score': score
                     })
-            elif parent_id and chunk_text:
-                # Add more chunks for existing parent
-                if parent_id in chunk_texts:
-                    chunk_texts[parent_id]['texts'].append(chunk_text)
-    
-    print(f"📚 Parent IDs found: {len(parent_ids)}")
-    print(f"📚 Chunk texts collected: {len(chunk_texts)}")
-    
-    # Build context from full documents OR chunk texts
-    full_documents = get_full_documents_by_ids(parent_ids)
-    
-    print(f"📚 Full documents loaded: {len(full_documents)}")
-    
-    context = ""
-    used_parent_ids = set()
-    
-    # Add Documents Context (from full documents)
-    for doc in full_documents:
-        parent_id = doc.get('id', '')
-        used_parent_ids.add(parent_id)
-        context += f"=== {doc['metadata'].get('title', 'Document')} ===\n"
-        context += doc['content'] + "\n\n"
+                    sources_info.append({
+                        "type": "memory",
+                        "title": f"Previous Q&A: {question[:50]}...",
+                        "source": "Memory",
+                        "score": round(score, 2),
+                        "download_url": None
+                    })
+            else:
+                # Handle Documents/Websites/YouTube
+                parent_id = metadata.get('parent_id')
+                
+                if parent_id and parent_id not in parent_ids:
+                    parent_ids.append(parent_id)
+                    
+                    # Store chunk text as fallback
+                    if chunk_text:
+                        if parent_id not in chunk_texts:
+                            chunk_texts[parent_id] = {
+                                'title': metadata.get('title', metadata.get('filename', 'Document')),
+                                'texts': []
+                            }
+                        chunk_texts[parent_id]['texts'].append(chunk_text)
+                    
+                    if score >= display_min_score:
+                        source_url = metadata.get('source', 'Unknown')
+                        source_title = metadata.get('title', metadata.get('filename', source_url))
+                        domain = metadata.get('domain', '')
+                        file_path = metadata.get('file_path', '')
+                        
+                        # Add domain to title for clarity
+                        if domain and domain.lower() not in source_title.lower():
+                            source_title = f"{domain} - {source_title}"
+                        
+                        download_url = None
+                        if file_path and os.path.exists(file_path):
+                            filename = os.path.basename(file_path)
+                            download_url = f"/download/{filename}"
+                        
+                        sources_info.append({
+                            "type": doc_type,
+                            "title": source_title,
+                            "source": source_url,
+                            "score": round(score, 2),
+                            "download_url": download_url
+                        })
+                elif parent_id and chunk_text:
+                    # Add more chunks for existing parent
+                    if parent_id in chunk_texts:
+                        chunk_texts[parent_id]['texts'].append(chunk_text)
         
-        # Collect images from document
-        doc_images = doc.get('images', [])
-        if doc_images:
-            for img in doc_images:
-                img['doc_title'] = doc['metadata'].get('title', 'Document')
-                all_images.append(img)
+        print(f"📚 Parent IDs found: {len(parent_ids)}")
+        print(f"📚 Chunk texts collected: {len(chunk_texts)}")
+        
+        # Build context from full documents OR chunk texts
+        full_documents = get_full_documents_by_ids(parent_ids)
+        
+        print(f"📚 Full documents loaded: {len(full_documents)}")
+        
+        context = ""
+        used_parent_ids = set()
+        
+        # Add Documents Context (from full documents)
+        for doc in full_documents:
+            parent_id = doc.get('id', '')
+            used_parent_ids.add(parent_id)
+            context += f"=== {doc['metadata'].get('title', 'Document')} ===\n"
+            context += doc['content'] + "\n\n"
+            
+            # Collect images from document
+            doc_images = doc.get('images', [])
+            if doc_images:
+                for img in doc_images:
+                    img['doc_title'] = doc['metadata'].get('title', 'Document')
+                    all_images.append(img)
+        
+        # Fallback: Add chunk texts for documents not found locally
+        for parent_id, chunk_data in chunk_texts.items():
+            if parent_id not in used_parent_ids:
+                print(f"⚠️ Using fallback chunks for: {chunk_data['title']}")
+                context += f"=== {chunk_data['title']} ===\n"
+                # Join unique chunks
+                unique_texts = list(set(chunk_data['texts']))
+                context += "\n".join(unique_texts[:3]) + "\n\n"  # Limit to 3 chunks
+        
+        # Add Memory Context
+        if memory_contexts:
+            context += "=== Previous Conversations (Memory) ===\n"
+            for mem in memory_contexts:
+                context += f"Q: {mem['question']}\n"
+                context += f"A: {mem['answer']}\n\n"
+        
+        print(f"📝 Final context length: {len(context)}")
+        print(f"🖼️ Images found: {len(all_images)}")
+        
+        # Remove duplicate sources
+        seen_sources = set()
+        unique_sources = []
+        for source in sources_info:
+            source_key = f"{source['type']}_{source['source']}"
+            if source_key not in seen_sources:
+                seen_sources.add(source_key)
+                unique_sources.append(source)
+        
+        # Return tracker for chat to complete
+        return context, unique_sources[:5], all_images[:10], tracker  # Limit to 10 images
     
-    # Fallback: Add chunk texts for documents not found locally
-    for parent_id, chunk_data in chunk_texts.items():
-        if parent_id not in used_parent_ids:
-            print(f"⚠️ Using fallback chunks for: {chunk_data['title']}")
-            context += f"=== {chunk_data['title']} ===\n"
-            # Join unique chunks
-            unique_texts = list(set(chunk_data['texts']))
-            context += "\n".join(unique_texts[:3]) + "\n\n"  # Limit to 3 chunks
-    
-    # Add Memory Context
-    if memory_contexts:
-        context += "=== Previous Conversations (Memory) ===\n"
-        for mem in memory_contexts:
-            context += f"Q: {mem['question']}\n"
-            context += f"A: {mem['answer']}\n\n"
-    
-    print(f"📝 Final context length: {len(context)}")
-    print(f"🖼️ Images found: {len(all_images)}")
-    
-    # Remove duplicate sources
-    seen_sources = set()
-    unique_sources = []
-    for source in sources_info:
-        source_key = f"{source['type']}_{source['source']}"
-        if source_key not in seen_sources:
-            seen_sources.add(source_key)
-            unique_sources.append(source)
-    
-    return context, unique_sources[:5], all_images[:10]  # Limit to 10 images
+    except Exception as e:
+        if tracker:
+            tracker.error_step("rerank", str(e))
+            tracker.finish(error=str(e))
+            if tracker.id in active_pipelines:
+                del active_pipelines[tracker.id]
+        raise
 
 def save_to_memory(question: str, answer: str, user_id: str):
     memory_text = f"Question: {question}\nAnswer: {answer}"
@@ -615,56 +783,103 @@ def extract_domain_name(url: str) -> str:
         return ""
 
 def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: str, file_path: str, metadata: dict, images: List[dict] = None):
-    parent_id = f"parent_{uuid.uuid4().hex[:12]}"
+    # Start pipeline tracking
+    tracker = PipelineTracker("ingestion", source)
+    active_pipelines[tracker.id] = tracker
     
-    # Extract domain/company name for better search
-    domain_name = extract_domain_name(source) if doc_type == "website" else ""
-    
-    save_full_document(parent_id, full_text, {
-        "source": source,
-        "type": doc_type,
-        "file_path": file_path,
-        "title": metadata.get("title", source),
-        "summary": metadata.get("summary", ""),
-        "domain": domain_name
-    }, images=images)
-    
-    chunks, chunker_type = smart_chunk_text(full_text)
-    
-    chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
-    print(f"📦 Created {len(chunks)} chunks using {chunker_emoji} {chunker_type} chunker for {source}")
-    
-    metadata_list = []
-    for i, chunk in enumerate(chunks):
-        # Add domain name to chunk text for better semantic search
-        enhanced_text = f"{domain_name} - {chunk}" if domain_name else chunk
+    try:
+        parent_id = f"parent_{uuid.uuid4().hex[:12]}"
         
-        chunk_metadata = {
-            "text": enhanced_text,
+        # Step 1: Extract (already done before calling this function)
+        tracker.start_step("extract")
+        domain_name = extract_domain_name(source) if doc_type == "website" else ""
+        tracker.complete_step("extract", 
+            doc_type=doc_type, 
+            text_length=len(full_text),
+            images_count=len(images) if images else 0
+        )
+        
+        # Save full document
+        save_full_document(parent_id, full_text, {
             "source": source,
             "type": doc_type,
-            "filename": source,
             "file_path": file_path,
             "title": metadata.get("title", source),
             "summary": metadata.get("summary", ""),
-            "parent_id": parent_id,
-            "chunk_index": i,
-            "chunk_type": chunker_type,
             "domain": domain_name
-        }
+        }, images=images)
         
-        vector = embeddings.embed_query(chunk)
-        index.upsert(vectors=[{
-            "id": f"{parent_id}_chunk_{i}",
-            "values": vector,
-            "metadata": chunk_metadata
-        }])
+        # Step 2: Chunking
+        tracker.start_step("chunk")
+        chunks, chunker_type = smart_chunk_text(full_text)
+        tracker.complete_step("chunk", 
+            chunks_count=len(chunks), 
+            chunker_type=chunker_type,
+            avg_chunk_size=round(len(full_text) / len(chunks)) if chunks else 0
+        )
         
-        metadata_list.append(chunk_metadata)
-    
-    add_to_bm25_index(chunks, metadata_list)
-    
-    return len(chunks), chunker_type
+        chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+        print(f"📦 Created {len(chunks)} chunks using {chunker_emoji} {chunker_type} chunker for {source}")
+        
+        # Step 3: Embedding
+        tracker.start_step("embed")
+        metadata_list = []
+        for i, chunk in enumerate(chunks):
+            enhanced_text = f"{domain_name} - {chunk}" if domain_name else chunk
+            
+            chunk_metadata = {
+                "text": enhanced_text,
+                "source": source,
+                "type": doc_type,
+                "filename": source,
+                "file_path": file_path,
+                "title": metadata.get("title", source),
+                "summary": metadata.get("summary", ""),
+                "parent_id": parent_id,
+                "chunk_index": i,
+                "chunk_type": chunker_type,
+                "domain": domain_name
+            }
+            
+            vector = embeddings.embed_query(chunk)
+            
+            # Step 4: Store vectors (inside loop for first chunk only to mark timing)
+            if i == 0:
+                tracker.complete_step("embed", model="text-embedding-3-large", dimensions=3072)
+                tracker.start_step("store_vectors")
+            
+            index.upsert(vectors=[{
+                "id": f"{parent_id}_chunk_{i}",
+                "values": vector,
+                "metadata": chunk_metadata
+            }])
+            
+            metadata_list.append(chunk_metadata)
+        
+        tracker.complete_step("store_vectors", vectors_stored=len(chunks), index="pinecone")
+        
+        # Step 5: Store BM25
+        tracker.start_step("store_bm25")
+        add_to_bm25_index(chunks, metadata_list)
+        tracker.complete_step("store_bm25", entries_added=len(chunks))
+        
+        # Finish tracking
+        tracker.finish(
+            total_chunks=len(chunks),
+            chunker_type=chunker_type,
+            images_count=len(images) if images else 0
+        )
+        
+        return len(chunks), chunker_type
+        
+    except Exception as e:
+        tracker.error_step("embed", str(e))
+        tracker.finish(error=str(e))
+        raise
+    finally:
+        # Remove from active pipelines
+        if tracker.id in active_pipelines:
+            del active_pipelines[tracker.id]
 
 # ==================== API Endpoints ====================
 
@@ -1067,7 +1282,7 @@ def chat(request: ChatRequest):
         user_messages = [m['content'] for m in conv['messages'] if m['role'] == 'user'][-3:]
         search_query = " ".join(user_messages)
     
-    doc_context, sources, images = get_document_context_with_sources(search_query)
+    doc_context, sources, images, tracker = get_document_context_with_sources(search_query)
     
     # Add image info to prompt with full URLs for inline embedding
     image_info = ""
@@ -1112,8 +1327,26 @@ Example response format:
 
 Response:"""
     
+    # Step 6: Generate response
+    if tracker:
+        tracker.start_step("generate")
+    
     response = llm.invoke(prompt)
     answer = response.content
+    
+    # Complete pipeline tracking
+    if tracker:
+        tracker.complete_step("generate", 
+            model="gpt-4o",
+            prompt_length=len(prompt),
+            response_length=len(answer)
+        )
+        tracker.finish(
+            sources_count=len(sources),
+            has_images=len(images) > 0
+        )
+        if tracker.id in active_pipelines:
+            del active_pipelines[tracker.id]
     
     add_message_to_conversation(conversation_id, "assistant", answer, sources)
     
@@ -1801,6 +2034,119 @@ def get_stats():
             "search_type": "Hybrid (All Sources + Memory)",
             "error": str(e)
         }
+
+# ==================== Pipeline Monitor Endpoints ====================
+
+@app.get("/pipeline/logs")
+def get_pipeline_logs(limit: int = 20, pipeline_type: str = None):
+    """Get recent pipeline execution logs"""
+    try:
+        logs = load_pipeline_logs()
+        
+        # Filter by type if specified
+        if pipeline_type:
+            logs = [l for l in logs if l.get("pipeline_type") == pipeline_type]
+        
+        # Return most recent first
+        logs = sorted(logs, key=lambda x: x.get("start_time", ""), reverse=True)
+        
+        return {
+            "logs": logs[:limit],
+            "total": len(logs)
+        }
+    except Exception as e:
+        return {"logs": [], "total": 0, "error": str(e)}
+
+@app.get("/pipeline/logs/{log_id}")
+def get_pipeline_log(log_id: str):
+    """Get a specific pipeline log by ID"""
+    try:
+        logs = load_pipeline_logs()
+        for log in logs:
+            if log.get("id") == log_id:
+                return log
+        return {"error": "Pipeline log not found"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/pipeline/active")
+def get_active_pipelines():
+    """Get currently running pipelines"""
+    return {
+        "active": [p.to_dict() for p in active_pipelines.values()]
+    }
+
+@app.get("/pipeline/stats")
+def get_pipeline_stats():
+    """Get aggregated pipeline statistics"""
+    try:
+        logs = load_pipeline_logs()
+        
+        if not logs:
+            return {
+                "total_runs": 0,
+                "ingestion": {"count": 0, "avg_duration_ms": 0},
+                "retrieval": {"count": 0, "avg_duration_ms": 0}
+            }
+        
+        ingestion_logs = [l for l in logs if l.get("pipeline_type") == "ingestion"]
+        retrieval_logs = [l for l in logs if l.get("pipeline_type") == "retrieval"]
+        
+        def calc_avg(logs_list):
+            if not logs_list:
+                return 0
+            durations = [l.get("total_duration_ms", 0) for l in logs_list]
+            return round(sum(durations) / len(durations), 2)
+        
+        def calc_step_avg(logs_list, step_name):
+            durations = []
+            for log in logs_list:
+                steps = log.get("steps", {})
+                if step_name in steps:
+                    durations.append(steps[step_name].get("duration_ms", 0))
+            return round(sum(durations) / len(durations), 2) if durations else 0
+        
+        # Calculate average duration for each step
+        ingestion_steps = ["extract", "chunk", "embed", "store_vectors", "store_bm25"]
+        retrieval_steps = ["embed_query", "pinecone_search", "bm25_search", "rrf_merge", "rerank", "generate"]
+        
+        ingestion_step_avgs = {step: calc_step_avg(ingestion_logs, step) for step in ingestion_steps}
+        retrieval_step_avgs = {step: calc_step_avg(retrieval_logs, step) for step in retrieval_steps}
+        
+        return {
+            "total_runs": len(logs),
+            "ingestion": {
+                "count": len(ingestion_logs),
+                "avg_duration_ms": calc_avg(ingestion_logs),
+                "step_averages": ingestion_step_avgs
+            },
+            "retrieval": {
+                "count": len(retrieval_logs),
+                "avg_duration_ms": calc_avg(retrieval_logs),
+                "step_averages": retrieval_step_avgs
+            },
+            "last_24h": {
+                "ingestion": len([l for l in ingestion_logs if l.get("start_time", "") > (datetime.now() - timedelta(hours=24)).isoformat()]),
+                "retrieval": len([l for l in retrieval_logs if l.get("start_time", "") > (datetime.now() - timedelta(hours=24)).isoformat()])
+            }
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.delete("/pipeline/logs")
+def clear_pipeline_logs():
+    """Clear all pipeline logs"""
+    try:
+        if os.path.exists(PIPELINE_LOG_FILE):
+            os.remove(PIPELINE_LOG_FILE)
+        return {"success": True, "message": "Pipeline logs cleared"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/monitor")
+def serve_monitor():
+    """Serve the Pipeline Monitor dashboard"""
+    return FileResponse("templates/monitor.html")
 
 @app.get("/files")
 def list_files():
