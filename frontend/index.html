@@ -870,6 +870,236 @@
             accent-color: #00d9ff;
         }
 
+        /* Token Preview (Real-time) */
+        .token-preview {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 10px 15px;
+            background: rgba(255, 215, 0, 0.05);
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            border-radius: 12px;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+        }
+        
+        .token-preview.hidden {
+            display: none;
+        }
+        
+        .token-preview.warning {
+            border-color: rgba(255, 107, 107, 0.5);
+            background: rgba(255, 107, 107, 0.1);
+        }
+        
+        .token-preview-stat {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+        }
+        
+        .token-preview-stat .value {
+            font-weight: bold;
+            color: #ffd700;
+        }
+        
+        .token-preview-stat .label {
+            color: #888;
+        }
+        
+        .token-preview-stat.cost .value {
+            color: #00ff88;
+        }
+        
+        .analyze-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 15px;
+            background: rgba(255, 215, 0, 0.2);
+            color: #ffd700;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: auto;
+        }
+        
+        .analyze-btn:hover {
+            background: rgba(255, 215, 0, 0.3);
+            transform: scale(1.05);
+        }
+        
+        /* Optimization Modal */
+        .optimization-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .optimization-modal.active {
+            display: flex;
+        }
+        
+        .optimization-content {
+            background: linear-gradient(135deg, #1a1a3e, #0f0f23);
+            border-radius: 20px;
+            padding: 25px;
+            max-width: 500px;
+            width: 90%;
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            animation: slideUp 0.3s ease;
+        }
+        
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .optimization-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .optimization-title {
+            font-size: 1.2rem;
+            color: #ffd700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .optimization-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        
+        .optimization-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .opt-stat {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+        }
+        
+        .opt-stat-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #00d9ff;
+        }
+        
+        .opt-stat-value.cost {
+            color: #ffd700;
+        }
+        
+        .opt-stat-label {
+            font-size: 0.7rem;
+            color: #888;
+            margin-top: 4px;
+        }
+        
+        .optimization-suggestions {
+            margin-bottom: 20px;
+        }
+        
+        .opt-suggestion {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            border-left: 3px solid #888;
+        }
+        
+        .opt-suggestion.high { border-left-color: #ff6b6b; }
+        .opt-suggestion.medium { border-left-color: #ffd700; }
+        .opt-suggestion.info { border-left-color: #00d9ff; }
+        
+        .opt-suggestion-icon { font-size: 1.3rem; }
+        
+        .opt-suggestion-content { flex: 1; }
+        
+        .opt-suggestion-title {
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .opt-suggestion-desc {
+            color: #888;
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+        
+        .opt-suggestion-savings {
+            color: #00ff88;
+            font-size: 0.75rem;
+            margin-top: 6px;
+            font-weight: 600;
+        }
+        
+        .optimization-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .opt-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .opt-btn-cancel {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        
+        .opt-btn-send {
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            color: #000;
+        }
+        
+        .opt-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .no-suggestions {
+            text-align: center;
+            padding: 20px;
+            color: #00ff88;
+        }
+        
+        .no-suggestions-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
         /* Right Sidebar */
         .sidebar {
             display: flex;
@@ -1141,8 +1371,21 @@
                         </div>
                     </div>
                     <div class="chat-input-container">
+                        <!-- Real-time Token Preview -->
+                        <div class="token-preview hidden" id="token-preview">
+                            <div class="token-preview-stat">
+                                <span class="value" id="preview-tokens">0</span>
+                                <span class="label">tokens</span>
+                            </div>
+                            <div class="token-preview-stat cost">
+                                <span class="label">≈</span>
+                                <span class="value" id="preview-cost">$0.00</span>
+                            </div>
+                            <button class="analyze-btn" onclick="showOptimizationModal()">💡 Optimize</button>
+                        </div>
+                        
                         <div class="chat-input-wrapper">
-                            <input type="text" class="chat-input" id="chat-input" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+                            <input type="text" class="chat-input" id="chat-input" placeholder="Type your message..." onkeypress="handleKeyPress(event)" oninput="updateTokenPreview()">
                             <button class="send-btn" id="send-btn" onclick="sendMessage()">Send</button>
                         </div>
                         <div class="input-options">
@@ -2242,7 +2485,223 @@
                 openImageModal(e.target.src, e.target.alt || 'Image');
             }
         });
+        
+        // ==================== Token Preview Functions ====================
+        
+        let currentAnalysis = null;
+        const ESTIMATED_CONTEXT_TOKENS = 3000;  // Average context size
+        const ESTIMATED_OUTPUT_TOKENS = 500;    // Average response
+        
+        function estimateTokens(text) {
+            return Math.max(1, Math.floor(text.length / 4));
+        }
+        
+        function updateTokenPreview() {
+            const input = document.getElementById('chat-input');
+            const preview = document.getElementById('token-preview');
+            const query = input.value.trim();
+            
+            if (query.length < 10) {
+                preview.classList.add('hidden');
+                return;
+            }
+            
+            const queryTokens = estimateTokens(query);
+            const totalInputTokens = queryTokens + ESTIMATED_CONTEXT_TOKENS + 200; // +200 system prompt
+            const totalTokens = totalInputTokens + ESTIMATED_OUTPUT_TOKENS;
+            
+            // Calculate estimated cost
+            const inputCost = (totalInputTokens / 1000000) * 2.50;  // GPT-4o input
+            const outputCost = (ESTIMATED_OUTPUT_TOKENS / 1000000) * 10.00;  // GPT-4o output
+            const rerankCost = 0.0005;  // Cohere rerank
+            const embedCost = (queryTokens / 1000000) * 0.13;  // Query embedding
+            const totalCost = inputCost + outputCost + rerankCost + embedCost;
+            
+            document.getElementById('preview-tokens').textContent = totalTokens.toLocaleString();
+            document.getElementById('preview-cost').textContent = '$' + totalCost.toFixed(4);
+            
+            preview.classList.remove('hidden');
+            
+            // Warning for high token usage
+            if (totalTokens > 8000) {
+                preview.classList.add('warning');
+            } else {
+                preview.classList.remove('warning');
+            }
+            
+            // Generate suggestions
+            currentAnalysis = generateSuggestions(query, queryTokens, ESTIMATED_CONTEXT_TOKENS, totalTokens, totalCost);
+        }
+        
+        function generateSuggestions(query, queryTokens, contextTokens, totalTokens, totalCost) {
+            const suggestions = [];
+            const queryLower = query.toLowerCase();
+            
+            // Check for filler words
+            const fillerWords = ['please', 'can you', 'could you', 'i want to', 'i need to', 
+                               'help me', 'tell me', 'explain to me', 'i would like'];
+            const foundFillers = fillerWords.filter(w => queryLower.includes(w));
+            
+            if (foundFillers.length > 0) {
+                suggestions.push({
+                    type: 'question',
+                    priority: 'medium',
+                    icon: '✂️',
+                    title: 'Remove filler words',
+                    description: `Words like "${foundFillers.slice(0, 2).join('", "')}" can be removed without changing the meaning.`,
+                    savings: `~${foundFillers.length * 3} tokens`
+                });
+            }
+            
+            // Check query length
+            if (queryTokens > 50) {
+                suggestions.push({
+                    type: 'question',
+                    priority: 'high',
+                    icon: '📝',
+                    title: 'Shorten your question',
+                    description: `Your question uses ${queryTokens} tokens. Try to be more concise and direct.`,
+                    savings: `~${queryTokens - 30} tokens`
+                });
+            }
+            
+            // Check for repetition
+            const words = query.split(/\s+/);
+            const uniqueWords = new Set(words.map(w => w.toLowerCase()));
+            if (words.length - uniqueWords.size > 3) {
+                suggestions.push({
+                    type: 'question',
+                    priority: 'medium',
+                    icon: '🔄',
+                    title: 'Remove repeated words',
+                    description: 'Your question contains repeated words that could be removed.',
+                    savings: `~${words.length - uniqueWords.size} tokens`
+                });
+            }
+            
+            // High cost warning
+            if (totalCost > 0.03) {
+                suggestions.push({
+                    type: 'cost',
+                    priority: 'high',
+                    icon: '💰',
+                    title: 'High estimated cost',
+                    description: `This query may cost ~$${totalCost.toFixed(4)}. Consider breaking it into smaller questions.`,
+                    savings: 'Split into 2-3 questions'
+                });
+            }
+            
+            // Large context hint
+            if (contextTokens > 4000) {
+                suggestions.push({
+                    type: 'context',
+                    priority: 'info',
+                    icon: '📚',
+                    title: 'Use specific keywords',
+                    description: 'More specific questions retrieve smaller, more relevant context.',
+                    savings: 'Up to 50% context reduction'
+                });
+            }
+            
+            return {
+                queryTokens,
+                contextTokens,
+                totalTokens,
+                totalCost,
+                suggestions
+            };
+        }
+        
+        function showOptimizationModal() {
+            if (!currentAnalysis) {
+                updateTokenPreview();
+            }
+            
+            const modal = document.getElementById('optimization-modal');
+            const query = document.getElementById('chat-input').value.trim();
+            
+            if (!query) return;
+            
+            // Update stats
+            document.getElementById('opt-query-tokens').textContent = currentAnalysis.queryTokens.toLocaleString();
+            document.getElementById('opt-total-tokens').textContent = currentAnalysis.totalTokens.toLocaleString();
+            document.getElementById('opt-estimated-cost').textContent = '$' + currentAnalysis.totalCost.toFixed(4);
+            
+            // Update suggestions
+            const suggestionsContainer = document.getElementById('opt-suggestions-list');
+            
+            if (currentAnalysis.suggestions.length === 0) {
+                suggestionsContainer.innerHTML = `
+                    <div class="no-suggestions">
+                        <div class="no-suggestions-icon">✅</div>
+                        <p>Your question looks optimized!</p>
+                    </div>
+                `;
+            } else {
+                suggestionsContainer.innerHTML = currentAnalysis.suggestions.map(s => `
+                    <div class="opt-suggestion ${s.priority}">
+                        <span class="opt-suggestion-icon">${s.icon}</span>
+                        <div class="opt-suggestion-content">
+                            <div class="opt-suggestion-title">${s.title}</div>
+                            <div class="opt-suggestion-desc">${s.description}</div>
+                            <div class="opt-suggestion-savings">💰 Potential savings: ${s.savings}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+            
+            modal.classList.add('active');
+        }
+        
+        function closeOptimizationModal() {
+            document.getElementById('optimization-modal').classList.remove('active');
+        }
+        
+        function sendFromModal() {
+            closeOptimizationModal();
+            sendMessage();
+        }
+        
+        // Close modal on outside click
+        document.getElementById('optimization-modal')?.addEventListener('click', function(e) {
+            if (e.target === this) closeOptimizationModal();
+        });
     </script>
+    
+    <!-- Optimization Modal -->
+    <div class="optimization-modal" id="optimization-modal">
+        <div class="optimization-content">
+            <div class="optimization-header">
+                <span class="optimization-title">💡 Query Analysis</span>
+                <button class="optimization-close" onclick="closeOptimizationModal()">&times;</button>
+            </div>
+            
+            <div class="optimization-stats">
+                <div class="opt-stat">
+                    <div class="opt-stat-value" id="opt-query-tokens">0</div>
+                    <div class="opt-stat-label">Query Tokens</div>
+                </div>
+                <div class="opt-stat">
+                    <div class="opt-stat-value" id="opt-total-tokens">0</div>
+                    <div class="opt-stat-label">Est. Total</div>
+                </div>
+                <div class="opt-stat">
+                    <div class="opt-stat-value cost" id="opt-estimated-cost">$0.00</div>
+                    <div class="opt-stat-label">Est. Cost</div>
+                </div>
+            </div>
+            
+            <div class="optimization-suggestions" id="opt-suggestions-list">
+                <!-- Suggestions will be inserted here -->
+            </div>
+            
+            <div class="optimization-actions">
+                <button class="opt-btn opt-btn-cancel" onclick="closeOptimizationModal()">Edit Query</button>
+                <button class="opt-btn opt-btn-send" onclick="sendFromModal()">Send Anyway →</button>
+            </div>
+        </div>
+    </div>
+    
     <!-- Image Modal -->
     <div id="imageModal" class="image-modal" onclick="closeImageModal()">
         <span class="image-modal-close" onclick="closeImageModal()">&times;</span>
