@@ -2516,8 +2516,8 @@ async def generate_stream(question: str, user_id: str, conversation_id: str):
         user_messages = [m['content'] for m in conv['messages'] if m['role'] == 'user'][-3:]
         search_query = " ".join(user_messages)
     
-    # Get document context (من كل المصادر بما فيهم memory)
-    doc_context, sources, images = get_document_context_with_sources(search_query)
+    # Get document context (من كل المصادر بما فيهم memory) - disable tracking for streaming
+    doc_context, sources, images, tracker = get_document_context_with_sources(search_query, track_pipeline=False)
     
     # Send sources first (no need to send images separately now)
     sources_json = json.dumps({"type": "sources", "data": sources, "conversation_id": conversation_id})
@@ -3212,7 +3212,7 @@ def debug_all_documents():
 @app.get("/debug/prompt")
 def debug_prompt(query: str):
     """Debug endpoint to see what images are being passed to the LLM"""
-    doc_context, sources, images = get_document_context_with_sources(query)
+    doc_context, sources, images, _ = get_document_context_with_sources(query, track_pipeline=False)
     
     return {
         "query": query,
