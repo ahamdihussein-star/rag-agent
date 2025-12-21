@@ -27,6 +27,7 @@ tiktoken>=0.5.2
 # Web Scraping
 requests>=2.31.0
 beautifulsoup4>=4.12.2
+playwright>=1.40.0
 
 # YouTube
 youtube-transcript-api>=0.6.2

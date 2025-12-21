@@ -38,6 +38,15 @@ except ImportError as e:
     UNSTRUCTURED_AVAILABLE = False
     print(f"⚠️ Unstructured.io not available: {e}. Using fallback parsing.")
 
+# Playwright for JavaScript-rendered pages
+try:
+    from playwright.sync_api import sync_playwright
+    PLAYWRIGHT_AVAILABLE = True
+    print("✅ Playwright loaded successfully")
+except ImportError as e:
+    PLAYWRIGHT_AVAILABLE = False
+    print(f"⚠️ Playwright not available: {e}. Dynamic pages may not render fully.")
+
 # Load environment variables
 load_dotenv()
 
@@ -816,6 +825,92 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
         chunks, chunk_type = smart_chunk_text(text)
         chunks_with_meta = [{"text": c, "element_type": "NarrativeText", "metadata": {}} for c in chunks]
         return text, chunks_with_meta, chunk_type
+
+# ==================== Playwright for Dynamic Pages ====================
+
+def fetch_page_with_playwright(url: str, wait_time: int = 3000, scroll: bool = True) -> str:
+    """
+    Fetch a page using Playwright headless browser.
+    This renders JavaScript and returns the fully loaded HTML.
+    
+    Args:
+        url: The URL to fetch
+        wait_time: Time to wait for JS to render (ms)
+        scroll: Whether to scroll the page to trigger lazy loading
+    
+    Returns:
+        The fully rendered HTML content
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        print("⚠️ Playwright not available, falling back to requests")
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+        return response.text
+    
+    try:
+        print(f"🎭 Fetching with Playwright: {url}")
+        
+        with sync_playwright() as p:
+            # Launch headless Chromium
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1920, 'height': 1080}
+            )
+            page = context.new_page()
+            
+            # Navigate to the page
+            page.goto(url, wait_until='networkidle', timeout=30000)
+            
+            # Wait for dynamic content to load
+            page.wait_for_timeout(wait_time)
+            
+            # Scroll to trigger lazy loading if enabled
+            if scroll:
+                # Scroll down multiple times to load all content
+                for i in range(5):
+                    page.evaluate('window.scrollTo(0, document.body.scrollHeight * {})'.format((i + 1) / 5))
+                    page.wait_for_timeout(500)
+                
+                # Scroll back to top
+                page.evaluate('window.scrollTo(0, 0)')
+                page.wait_for_timeout(500)
+            
+            # Get the fully rendered HTML
+            html_content = page.content()
+            
+            browser.close()
+            
+            print(f"✅ Playwright fetched {len(html_content)} bytes from {url}")
+            return html_content
+            
+    except Exception as e:
+        print(f"⚠️ Playwright fetch failed: {e}, falling back to requests")
+        try:
+            response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+            return response.text
+        except Exception as req_e:
+            print(f"❌ Requests also failed: {req_e}")
+            raise
+
+def should_use_playwright(url: str) -> bool:
+    """
+    Determine if a URL should use Playwright based on known dynamic sites.
+    """
+    dynamic_domains = [
+        'oracle.com',
+        'aws.amazon.com',
+        'azure.microsoft.com',
+        'cloud.google.com',
+        'salesforce.com',
+        'workday.com',
+        'servicenow.com'
+    ]
+    
+    for domain in dynamic_domains:
+        if domain in url.lower():
+            return True
+    
+    return False
 
 # ==================== BM25 Index Management ====================
 
@@ -1913,6 +2008,7 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
             pages_scraped = []
             total_chunks = 0
             total_images = 0
+            used_playwright = False
             
             yield progress_event("starting", 5, f"Starting recursive scrape from {url}")
             
@@ -1933,11 +2029,20 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                     current_page=page_num, total_pages=max_pages, current_url=current_url)
                 
                 try:
-                    headers = {'User-Agent': 'Mozilla/5.0'}
-                    response = requests.get(current_url, headers=headers, timeout=10)
-                    response.raise_for_status()
+                    # Use Playwright for dynamic sites, requests for static
+                    use_playwright = PLAYWRIGHT_AVAILABLE and should_use_playwright(current_url)
                     
-                    html_content = response.text
+                    if use_playwright:
+                        used_playwright = True
+                        yield progress_event("scraping", overall_progress, 
+                            f"🎭 Rendering JS page {page_num}: {current_url[:40]}...",
+                            current_page=page_num, total_pages=max_pages, current_url=current_url)
+                        html_content = fetch_page_with_playwright(current_url)
+                    else:
+                        headers = {'User-Agent': 'Mozilla/5.0'}
+                        response = requests.get(current_url, headers=headers, timeout=10)
+                        response.raise_for_status()
+                        html_content = response.text
                     
                     # Extract links if we haven't reached max depth
                     if depth < max_depth:
@@ -1996,10 +2101,11 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                         f"✗ Failed: {current_url[:30]}... - {str(e)[:30]}")
                     continue
             
-            # Final message with Unstructured indicator if used
+            # Final message with indicators
             unstructured_indicator = " 🔧" if UNSTRUCTURED_AVAILABLE else ""
+            playwright_indicator = " 🎭" if used_playwright else ""
             yield done_event(
-                f"✅ Scraped {len(pages_scraped)} pages with {total_chunks} chunks{unstructured_indicator}, {total_images} images",
+                f"✅ Scraped {len(pages_scraped)} pages with {total_chunks} chunks{unstructured_indicator}{playwright_indicator}, {total_images} images",
                 total_chunks,
                 pages_scraped=pages_scraped,
                 total_pages=len(pages_scraped),
@@ -2187,9 +2293,10 @@ def debug_chunks(doc_id: str = None, source_url: str = None, limit: int = 50):
 
 @app.get("/unstructured-status")
 def unstructured_status():
-    """Check if Unstructured.io is available and working"""
+    """Check if Unstructured.io and Playwright are available and working"""
     return {
         "unstructured_available": UNSTRUCTURED_AVAILABLE,
+        "playwright_available": PLAYWRIGHT_AVAILABLE,
         "message": "✅ Unstructured.io is loaded and ready" if UNSTRUCTURED_AVAILABLE else "⚠️ Unstructured.io is not available, using fallback parsing",
         "capabilities": {
             "html_tables": UNSTRUCTURED_AVAILABLE,
@@ -2197,7 +2304,8 @@ def unstructured_status():
             "docx_structure": UNSTRUCTURED_AVAILABLE,
             "xlsx_structure": UNSTRUCTURED_AVAILABLE,
             "pptx_structure": UNSTRUCTURED_AVAILABLE,
-            "smart_chunking": UNSTRUCTURED_AVAILABLE
+            "smart_chunking": UNSTRUCTURED_AVAILABLE,
+            "javascript_rendering": PLAYWRIGHT_AVAILABLE
         }
     }
 
