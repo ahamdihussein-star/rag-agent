@@ -1004,14 +1004,29 @@ def load_full_document(doc_id: str) -> Optional[dict]:
     return None
 
 def get_full_documents_by_ids(doc_ids: List[str]) -> List[dict]:
+    """Load full documents by IDs with content deduplication"""
     documents = []
     seen_ids = set()
+    seen_content_hashes = set()  # Deduplicate by content
+    
     for doc_id in doc_ids:
         if doc_id not in seen_ids:
             doc = load_full_document(doc_id)
             if doc:
-                documents.append(doc)
+                # Create content hash for deduplication
+                content = doc.get('content', '')
+                content_hash = hash(content[:1000])  # Hash first 1000 chars
+                
+                if content_hash not in seen_content_hashes:
+                    documents.append(doc)
+                    seen_content_hashes.add(content_hash)
+                    print(f"✅ Loaded unique document: {doc.get('metadata', {}).get('title', doc_id)[:50]}")
+                else:
+                    print(f"⏭️ Skipping duplicate content: {doc.get('metadata', {}).get('title', doc_id)[:50]}")
+                
                 seen_ids.add(doc_id)
+    
+    print(f"📚 Unique documents after dedup: {len(documents)}")
     return documents
 
 # ==================== Conversation Functions ====================
@@ -1089,6 +1104,22 @@ def rerank_results(query: str, documents: List[dict], top_n: int = 5, source: st
         return []
     
     try:
+        # First, deduplicate by content
+        seen_content = set()
+        unique_docs = []
+        for doc in documents:
+            text = doc.get('text', doc.get('metadata', {}).get('text', ''))
+            if text:
+                content_hash = hash(text[:500])  # Hash first 500 chars
+                if content_hash not in seen_content:
+                    unique_docs.append(doc)
+                    seen_content.add(content_hash)
+        
+        if len(unique_docs) < len(documents):
+            print(f"🔄 Deduplicated: {len(documents)} → {len(unique_docs)} documents before reranking")
+        
+        documents = unique_docs
+        
         texts = [doc.get('text', doc.get('metadata', {}).get('text', '')) for doc in documents]
         texts = [t for t in texts if t]
         
@@ -1394,8 +1425,18 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
                 break
         
         # Fallback: Add chunk texts for documents not found locally (if we have room)
+        seen_chunk_hashes = set()  # For content deduplication
         for parent_id, chunk_data in chunk_texts.items():
             if parent_id not in used_parent_ids and context_tokens < MAX_CONTEXT_TOKENS:
+                # Check if we already have similar content
+                content_preview = "".join(chunk_data['texts'])[:500]
+                content_hash = hash(content_preview)
+                
+                if content_hash in seen_chunk_hashes:
+                    print(f"⏭️ Skipping duplicate chunk content: {chunk_data['title'][:40]}")
+                    continue
+                
+                seen_chunk_hashes.add(content_hash)
                 print(f"⚠️ Using fallback chunks for: {chunk_data['title']}")
                 chunk_content = f"=== {chunk_data['title']} ===\n"
                 # Join unique chunks
