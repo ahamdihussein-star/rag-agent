@@ -47,6 +47,7 @@ reportlab
 opencv-python-headless>=4.8.0
 pi_heif>=0.13.0
 pandas>=2.0.0
+unstructured-pytesseract>=0.3.0
 unstructured==0.10.30
 
 # File type support
