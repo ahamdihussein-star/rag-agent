@@ -1950,33 +1950,56 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                     images = extract_images_from_page(current_url, html_content)
                     total_images += len(images)
                     
-                    # Parse content
-                    soup = BeautifulSoup(html_content, 'html.parser')
-                    for element in soup(['script', 'style', 'nav', 'footer', 'header']):
-                        element.decompose()
-                    
-                    text = soup.get_text(separator='\n', strip=True)
-                    lines = [line.strip() for line in text.splitlines() if line.strip()]
-                    full_text = '\n'.join(lines)
-                    
-                    if full_text and len(full_text) > 100:
-                        metadata = extract_metadata(full_text[:3000], "website")
-                        chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, current_url, "website", "", metadata, images=images)
-                        total_chunks += chunks
-                        pages_scraped.append(current_url)
-                        chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+                    # Parse content using Unstructured if available
+                    if UNSTRUCTURED_AVAILABLE:
+                        full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, current_url)
                         
-                        yield progress_event("page_done", overall_progress,
-                            f"✓ Page {page_num}: {chunks} chunks {chunker_emoji}, {len(images)} images",
-                            page_url=current_url, page_chunks=chunks, page_images=len(images), chunker_type=chunker_type)
+                        if full_text and len(full_text) > 100:
+                            metadata = extract_metadata(full_text[:3000], "website")
+                            chunks = ingest_with_unstructured(chunks_with_metadata, full_text, current_url, "website", "", metadata, chunker_type, images=images)
+                            total_chunks += chunks
+                            pages_scraped.append(current_url)
+                            
+                            # Count element types for display
+                            element_types = {}
+                            for c in chunks_with_metadata:
+                                et = c.get("element_type", "Unknown")
+                                element_types[et] = element_types.get(et, 0) + 1
+                            element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
+                            
+                            yield progress_event("page_done", overall_progress,
+                                f"✓ Page {page_num}: {chunks} chunks 🔧 ({element_summary}), {len(images)} images",
+                                page_url=current_url, page_chunks=chunks, page_images=len(images), chunker_type=chunker_type)
+                    else:
+                        # Fallback to BeautifulSoup
+                        soup = BeautifulSoup(html_content, 'html.parser')
+                        for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+                            element.decompose()
+                        
+                        text = soup.get_text(separator='\n', strip=True)
+                        lines = [line.strip() for line in text.splitlines() if line.strip()]
+                        full_text = '\n'.join(lines)
+                        
+                        if full_text and len(full_text) > 100:
+                            metadata = extract_metadata(full_text[:3000], "website")
+                            chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, current_url, "website", "", metadata, images=images)
+                            total_chunks += chunks
+                            pages_scraped.append(current_url)
+                            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+                            
+                            yield progress_event("page_done", overall_progress,
+                                f"✓ Page {page_num}: {chunks} chunks {chunker_emoji}, {len(images)} images",
+                                page_url=current_url, page_chunks=chunks, page_images=len(images), chunker_type=chunker_type)
                     
                 except Exception as e:
                     yield progress_event("page_error", overall_progress,
                         f"✗ Failed: {current_url[:30]}... - {str(e)[:30]}")
                     continue
             
+            # Final message with Unstructured indicator if used
+            unstructured_indicator = " 🔧" if UNSTRUCTURED_AVAILABLE else ""
             yield done_event(
-                f"✅ Scraped {len(pages_scraped)} pages with {total_chunks} chunks, {total_images} images",
+                f"✅ Scraped {len(pages_scraped)} pages with {total_chunks} chunks{unstructured_indicator}, {total_images} images",
                 total_chunks,
                 pages_scraped=pages_scraped,
                 total_pages=len(pages_scraped),
