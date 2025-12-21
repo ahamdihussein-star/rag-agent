@@ -29,7 +29,11 @@ COPY . .
 # Create directories
 RUN mkdir -p /app/data /app/uploads /app/doc_images
 
+# Copy and make start script executable
+COPY start.sh .
+RUN chmod +x start.sh
+
 EXPOSE 8080
 
-# Use shell form to expand $PORT variable
-CMD uvicorn api:app --host 0.0.0.0 --port ${PORT:-8080}
+# Use start script
+CMD ["./start.sh"]
