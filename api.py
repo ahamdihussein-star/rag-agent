@@ -40,7 +40,7 @@ except ImportError as e:
 
 # Playwright for JavaScript-rendered pages
 try:
-    from playwright.sync_api import sync_playwright
+    from playwright.async_api import async_playwright
     PLAYWRIGHT_AVAILABLE = True
     print("✅ Playwright loaded successfully")
 except ImportError as e:
@@ -828,9 +828,9 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
 
 # ==================== Playwright for Dynamic Pages ====================
 
-def fetch_page_with_playwright(url: str, wait_time: int = 3000, scroll: bool = True) -> str:
+async def fetch_page_with_playwright(url: str, wait_time: int = 3000, scroll: bool = True) -> str:
     """
-    Fetch a page using Playwright headless browser.
+    Fetch a page using Playwright headless browser (async version).
     This renders JavaScript and returns the fully loaded HTML.
     
     Args:
@@ -847,38 +847,38 @@ def fetch_page_with_playwright(url: str, wait_time: int = 3000, scroll: bool = T
         return response.text
     
     try:
-        print(f"🎭 Fetching with Playwright: {url}")
+        print(f"🎭 Fetching with Playwright (async): {url}")
         
-        with sync_playwright() as p:
+        async with async_playwright() as p:
             # Launch headless Chromium
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 viewport={'width': 1920, 'height': 1080}
             )
-            page = context.new_page()
+            page = await context.new_page()
             
             # Navigate to the page
-            page.goto(url, wait_until='networkidle', timeout=30000)
+            await page.goto(url, wait_until='networkidle', timeout=30000)
             
             # Wait for dynamic content to load
-            page.wait_for_timeout(wait_time)
+            await page.wait_for_timeout(wait_time)
             
             # Scroll to trigger lazy loading if enabled
             if scroll:
                 # Scroll down multiple times to load all content
                 for i in range(5):
-                    page.evaluate('window.scrollTo(0, document.body.scrollHeight * {})'.format((i + 1) / 5))
-                    page.wait_for_timeout(500)
+                    await page.evaluate('window.scrollTo(0, document.body.scrollHeight * {})'.format((i + 1) / 5))
+                    await page.wait_for_timeout(500)
                 
                 # Scroll back to top
-                page.evaluate('window.scrollTo(0, 0)')
-                page.wait_for_timeout(500)
+                await page.evaluate('window.scrollTo(0, 0)')
+                await page.wait_for_timeout(500)
             
             # Get the fully rendered HTML
-            html_content = page.content()
+            html_content = await page.content()
             
-            browser.close()
+            await browser.close()
             
             print(f"✅ Playwright fetched {len(html_content)} bytes from {url}")
             return html_content
@@ -2037,7 +2037,7 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                         yield progress_event("scraping", overall_progress, 
                             f"🎭 Rendering JS page {page_num}: {current_url[:40]}...",
                             current_page=page_num, total_pages=max_pages, current_url=current_url)
-                        html_content = fetch_page_with_playwright(current_url)
+                        html_content = await fetch_page_with_playwright(current_url)
                     else:
                         headers = {'User-Agent': 'Mozilla/5.0'}
                         response = requests.get(current_url, headers=headers, timeout=10)
