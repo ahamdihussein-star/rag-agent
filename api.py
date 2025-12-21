@@ -2390,6 +2390,74 @@ def unstructured_status():
         }
     }
 
+@app.get("/debug-html")
+async def debug_html(url: str, search: str = None):
+    """
+    Debug endpoint to see raw HTML and what Unstructured extracts.
+    Use ?search=keyword to highlight/filter content containing that keyword.
+    """
+    try:
+        # Determine if we should use Playwright
+        use_playwright = PLAYWRIGHT_AVAILABLE and should_use_playwright(url)
+        
+        if use_playwright:
+            html_content = await fetch_page_with_playwright(url)
+            fetch_method = "playwright"
+        else:
+            response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+            html_content = response.text
+            fetch_method = "requests"
+        
+        # Parse with Unstructured if available
+        unstructured_elements = []
+        if UNSTRUCTURED_AVAILABLE:
+            full_text, chunks, chunker_type = parse_html_with_unstructured(html_content, url)
+            
+            for i, chunk in enumerate(chunks):
+                chunk_text = chunk.get("text", "")
+                element_type = chunk.get("element_type", "Unknown")
+                
+                # Filter by search term if provided
+                if search and search.lower() not in chunk_text.lower():
+                    continue
+                
+                unstructured_elements.append({
+                    "index": i,
+                    "element_type": element_type,
+                    "text_length": len(chunk_text),
+                    "text_preview": chunk_text[:500] + "..." if len(chunk_text) > 500 else chunk_text,
+                    "contains_search": search.lower() in chunk_text.lower() if search else None
+                })
+        
+        # Search in raw HTML
+        html_contains_search = False
+        html_search_context = None
+        if search:
+            html_contains_search = search.lower() in html_content.lower()
+            if html_contains_search:
+                # Find context around the search term
+                idx = html_content.lower().find(search.lower())
+                start = max(0, idx - 200)
+                end = min(len(html_content), idx + len(search) + 200)
+                html_search_context = html_content[start:end]
+        
+        return {
+            "url": url,
+            "fetch_method": fetch_method,
+            "html_size_bytes": len(html_content),
+            "html_size_kb": round(len(html_content) / 1024, 2),
+            "search_term": search,
+            "html_contains_search": html_contains_search,
+            "html_search_context": html_search_context,
+            "unstructured_available": UNSTRUCTURED_AVAILABLE,
+            "total_elements_extracted": len(unstructured_elements),
+            "elements": unstructured_elements[:100],  # Limit to first 100
+            "raw_html_preview": html_content[:5000] + "..." if len(html_content) > 5000 else html_content
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/frontend")
 def serve_frontend():
     return FileResponse("frontend/index.html")
