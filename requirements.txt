@@ -31,7 +31,7 @@ beautifulsoup4>=4.12.2
 # YouTube
 youtube-transcript-api>=0.6.2
 
-# Document Processing (existing)
+# Document Processing
 pypdf>=3.17.0
 python-docx>=1.1.0
 openpyxl>=3.1.2
@@ -42,16 +42,17 @@ PyMuPDF
 Pillow
 reportlab
 
-# ==================== Unstructured.io (LITE version) ====================
-# Use older version that doesn't require inference module
-opencv-python-headless>=4.8.0
-pi_heif>=0.13.0
+# ==================== Unstructured.io (Full) ====================
 pandas>=2.0.0
-unstructured-pytesseract>=0.3.0
-unstructured==0.10.30
-
-# File type support
 python-magic>=0.4.27
 lxml>=4.9.0
 pdf2image>=1.16.0
 pdfminer.six>=20221105
+unstructured-pytesseract>=0.3.0
+pi_heif>=0.13.0
+
+# Install headless BEFORE unstructured to prevent opencv conflict
+opencv-python-headless>=4.8.0
+
+# Core Unstructured (full version)
+unstructured[all-docs]>=0.10.0
