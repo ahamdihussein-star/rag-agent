@@ -31,4 +31,5 @@ RUN mkdir -p /app/data /app/uploads /app/doc_images
 
 EXPOSE 8080
 
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8080"]
+# Use shell form to expand $PORT variable
+CMD uvicorn api:app --host 0.0.0.0 --port ${PORT:-8080}
