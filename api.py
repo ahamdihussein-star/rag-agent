@@ -828,7 +828,7 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
 
 # ==================== Playwright for Dynamic Pages ====================
 
-async def fetch_page_with_playwright(url: str, wait_time: int = 3000, scroll: bool = True) -> str:
+async def fetch_page_with_playwright(url: str, wait_time: int = 5000, scroll: bool = True) -> str:
     """
     Fetch a page using Playwright headless browser (async version).
     This renders JavaScript and returns the fully loaded HTML.
@@ -858,22 +858,38 @@ async def fetch_page_with_playwright(url: str, wait_time: int = 3000, scroll: bo
             )
             page = await context.new_page()
             
-            # Navigate to the page
-            await page.goto(url, wait_until='networkidle', timeout=30000)
+            # Navigate to the page - use 'load' instead of 'networkidle' (faster)
+            # Increase timeout to 60 seconds
+            await page.goto(url, wait_until='load', timeout=60000)
             
             # Wait for dynamic content to load
             await page.wait_for_timeout(wait_time)
             
+            # Try to click "Expand All" or similar buttons if they exist
+            try:
+                expand_buttons = await page.query_selector_all('button:has-text("Expand"), button:has-text("Show All"), [aria-expanded="false"]')
+                for btn in expand_buttons[:10]:  # Limit to first 10
+                    try:
+                        await btn.click()
+                        await page.wait_for_timeout(300)
+                    except:
+                        pass
+            except:
+                pass
+            
             # Scroll to trigger lazy loading if enabled
             if scroll:
                 # Scroll down multiple times to load all content
-                for i in range(5):
-                    await page.evaluate('window.scrollTo(0, document.body.scrollHeight * {})'.format((i + 1) / 5))
-                    await page.wait_for_timeout(500)
+                for i in range(8):  # More scroll iterations
+                    await page.evaluate('window.scrollTo(0, document.body.scrollHeight * {})'.format((i + 1) / 8))
+                    await page.wait_for_timeout(800)
                 
                 # Scroll back to top
                 await page.evaluate('window.scrollTo(0, 0)')
                 await page.wait_for_timeout(500)
+            
+            # Final wait for any lazy-loaded content
+            await page.wait_for_timeout(2000)
             
             # Get the fully rendered HTML
             html_content = await page.content()
