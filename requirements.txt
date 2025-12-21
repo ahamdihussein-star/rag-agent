@@ -49,6 +49,9 @@ opencv-python-headless>=4.8.0
 # HEIF image support (required by unstructured)
 pi_heif>=0.13.0
 
+# Inference module for unstructured
+unstructured-inference>=0.7.0
+
 # Core unstructured library (will use the headless opencv we installed above)
 unstructured>=0.10.0
 
