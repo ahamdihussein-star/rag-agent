@@ -1,28 +1,62 @@
+# FastAPI and Server
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+aiofiles>=23.2.1
+
+# Environment and Config
 python-dotenv==1.0.0
+
+# LangChain
 langchain>=0.1.0
 langchain-openai>=0.0.5
 langchain-community>=0.0.20
 langchain-experimental>=0.0.50
+langchain-text-splitters>=0.0.1
+
+# Vector Store and Search
 pinecone>=3.0.0
-cohere>=4.40
+rank-bm25>=0.2.2
+numpy>=1.26.0
+
+# AI Services
 openai>=1.10.0
-python-multipart==0.0.6
+cohere>=4.40
+tiktoken>=0.5.2
+
+# Web Scraping
 requests>=2.31.0
 beautifulsoup4>=4.12.2
+
+# YouTube
 youtube-transcript-api>=0.6.2
+
+# Document Processing (existing)
 pypdf>=3.17.0
 python-docx>=1.1.0
 openpyxl>=3.1.2
 python-pptx>=0.6.23
-rank-bm25>=0.2.2
-numpy>=1.26.0
-tiktoken>=0.5.2
-aiofiles>=23.2.1
-# Railway rebuild Wed Dec 17 17:03:22 +04 2025
-langchain-text-splitters>=0.0.1
-python-docx
-reportlab
-Pillow
+
+# PDF/Image Processing
 PyMuPDF
+Pillow
+reportlab
+
+# ==================== NEW: Unstructured.io ====================
+# Smart document parsing with table support
+unstructured>=0.10.0
+unstructured[html]
+unstructured[pdf]
+unstructured[docx]
+unstructured[xlsx]
+unstructured[pptx]
+
+# Unstructured dependencies
+lxml>=4.9.0
+python-magic>=0.4.27
+# Note: On Windows, you may need python-magic-bin instead
+
+# ==================== END NEW ====================
+
+# Railway rebuild marker
+# Last updated: Unstructured.io integration

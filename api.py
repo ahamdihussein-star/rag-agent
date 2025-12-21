@@ -23,6 +23,21 @@ import numpy as np
 from typing import List, Optional
 import asyncio
 
+# Unstructured.io imports for smart document parsing
+try:
+    from unstructured.partition.html import partition_html
+    from unstructured.partition.pdf import partition_pdf
+    from unstructured.partition.docx import partition_docx
+    from unstructured.partition.xlsx import partition_xlsx
+    from unstructured.partition.pptx import partition_pptx
+    from unstructured.partition.text import partition_text
+    from unstructured.chunking.title import chunk_by_title
+    UNSTRUCTURED_AVAILABLE = True
+    print("✅ Unstructured.io loaded successfully")
+except ImportError as e:
+    UNSTRUCTURED_AVAILABLE = False
+    print(f"⚠️ Unstructured.io not available: {e}. Using fallback parsing.")
+
 # Load environment variables
 load_dotenv()
 
@@ -103,6 +118,7 @@ class IngestResponse(BaseModel):
     message: str
     chunks: int = 0
     chunker_type: str = "semantic"
+    element_types: Optional[dict] = None  # NEW: {"Table": 2, "NarrativeText": 5, ...}
 
 class UrlRequest(BaseModel):
     url: str
@@ -646,6 +662,180 @@ def smart_chunk_text(text: str, min_chunk_size: int = 100) -> tuple[List[str], s
     except Exception as e:
         print(f"Semantic chunking failed: {e}, using fallback")
         return fallback_splitter.split_text(text), "fallback"
+
+# ==================== Unstructured.io Smart Parsing ====================
+
+def parse_with_unstructured(content, content_type: str = "html", source_url: str = None) -> tuple[List[dict], str]:
+    """
+    Parse content using Unstructured.io for smart element extraction.
+    Returns: (chunks_with_metadata, chunker_type)
+    Each chunk has: {"text": str, "element_type": str, "metadata": dict}
+    """
+    if not UNSTRUCTURED_AVAILABLE:
+        # Fallback to basic parsing
+        if isinstance(content, str):
+            chunks, chunk_type = smart_chunk_text(content)
+            return [{"text": c, "element_type": "NarrativeText", "metadata": {}} for c in chunks], chunk_type
+        return [], "fallback"
+    
+    try:
+        elements = []
+        
+        # Parse based on content type
+        if content_type == "html":
+            if isinstance(content, str):
+                elements = partition_html(text=content)
+            else:
+                elements = partition_html(file=content)
+        elif content_type == "pdf":
+            elements = partition_pdf(filename=content)
+        elif content_type == "docx":
+            elements = partition_docx(filename=content)
+        elif content_type == "xlsx":
+            elements = partition_xlsx(filename=content)
+        elif content_type == "pptx":
+            elements = partition_pptx(filename=content)
+        elif content_type == "text":
+            if isinstance(content, str):
+                elements = partition_text(text=content)
+            else:
+                elements = partition_text(filename=content)
+        else:
+            # Fallback for unknown types
+            if isinstance(content, str):
+                chunks, chunk_type = smart_chunk_text(content)
+                return [{"text": c, "element_type": "NarrativeText", "metadata": {}} for c in chunks], chunk_type
+        
+        if not elements:
+            return [], "unstructured"
+        
+        # Use chunk_by_title for structure-aware chunking
+        # This keeps tables together and respects document hierarchy
+        chunked_elements = chunk_by_title(
+            elements,
+            max_characters=1500,
+            combine_text_under_n_chars=100,
+            new_after_n_chars=1200
+        )
+        
+        # Convert to our format with metadata
+        chunks_with_metadata = []
+        for i, chunk in enumerate(chunked_elements):
+            # Get element type (Table, NarrativeText, Title, ListItem, etc.)
+            element_type = type(chunk).__name__
+            
+            # Get text content
+            text = str(chunk)
+            
+            # Build metadata
+            chunk_metadata = {
+                "element_type": element_type,
+                "chunk_index": i,
+                "has_table": element_type == "Table" or "Table" in str(type(chunk.metadata)) if hasattr(chunk, 'metadata') else False,
+            }
+            
+            # Add page number if available (for PDFs)
+            if hasattr(chunk, 'metadata') and hasattr(chunk.metadata, 'page_number'):
+                chunk_metadata["page_number"] = chunk.metadata.page_number
+            
+            chunks_with_metadata.append({
+                "text": text,
+                "element_type": element_type,
+                "metadata": chunk_metadata
+            })
+        
+        print(f"📦 Unstructured created {len(chunks_with_metadata)} chunks")
+        
+        # Log element type distribution
+        type_counts = {}
+        for c in chunks_with_metadata:
+            et = c["element_type"]
+            type_counts[et] = type_counts.get(et, 0) + 1
+        print(f"📊 Element types: {type_counts}")
+        
+        return chunks_with_metadata, "unstructured"
+        
+    except Exception as e:
+        print(f"⚠️ Unstructured parsing failed: {e}, using fallback")
+        if isinstance(content, str):
+            chunks, chunk_type = smart_chunk_text(content)
+            return [{"text": c, "element_type": "NarrativeText", "metadata": {}} for c in chunks], chunk_type
+        return [], "fallback"
+
+def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[str, List[dict], str]:
+    """
+    Parse HTML content using Unstructured.io.
+    Returns: (full_text, chunks_with_metadata, chunker_type)
+    """
+    if not UNSTRUCTURED_AVAILABLE:
+        # Fallback to BeautifulSoup
+        soup = BeautifulSoup(html_content, 'html.parser')
+        for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+            element.decompose()
+        text = soup.get_text(separator='\n', strip=True)
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        full_text = '\n'.join(lines)
+        chunks, chunk_type = smart_chunk_text(full_text)
+        chunks_with_meta = [{"text": c, "element_type": "NarrativeText", "metadata": {}} for c in chunks]
+        return full_text, chunks_with_meta, chunk_type
+    
+    try:
+        # Parse HTML with Unstructured
+        elements = partition_html(text=html_content)
+        
+        if not elements:
+            return "", [], "unstructured"
+        
+        # Build full text from elements (preserving tables as structured text)
+        full_text_parts = []
+        for el in elements:
+            el_type = type(el).__name__
+            el_text = str(el)
+            
+            # For tables, add markers to keep them identifiable
+            if el_type == "Table":
+                full_text_parts.append(f"\n[TABLE]\n{el_text}\n[/TABLE]\n")
+            else:
+                full_text_parts.append(el_text)
+        
+        full_text = "\n\n".join(full_text_parts)
+        
+        # Chunk using title-aware chunking
+        chunked_elements = chunk_by_title(
+            elements,
+            max_characters=1500,
+            combine_text_under_n_chars=100,
+            new_after_n_chars=1200
+        )
+        
+        chunks_with_metadata = []
+        for i, chunk in enumerate(chunked_elements):
+            element_type = type(chunk).__name__
+            text = str(chunk)
+            
+            chunks_with_metadata.append({
+                "text": text,
+                "element_type": element_type,
+                "metadata": {
+                    "chunk_index": i,
+                    "source_url": url
+                }
+            })
+        
+        print(f"✅ Unstructured HTML: {len(elements)} elements → {len(chunks_with_metadata)} chunks")
+        
+        return full_text, chunks_with_metadata, "unstructured"
+        
+    except Exception as e:
+        print(f"⚠️ Unstructured HTML parsing failed: {e}")
+        # Fallback
+        soup = BeautifulSoup(html_content, 'html.parser')
+        for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+            element.decompose()
+        text = soup.get_text(separator='\n', strip=True)
+        chunks, chunk_type = smart_chunk_text(text)
+        chunks_with_meta = [{"text": c, "element_type": "NarrativeText", "metadata": {}} for c in chunks]
+        return text, chunks_with_meta, chunk_type
 
 # ==================== BM25 Index Management ====================
 
@@ -1357,6 +1547,158 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
         if tracker.id in active_pipelines:
             del active_pipelines[tracker.id]
 
+def ingest_with_unstructured(chunks_with_metadata: List[dict], full_text: str, source: str, doc_type: str, file_path: str, metadata: dict, chunker_type: str = "unstructured", images: List[dict] = None):
+    """
+    Ingest document using pre-parsed Unstructured.io chunks.
+    chunks_with_metadata: List of {"text": str, "element_type": str, "metadata": dict}
+    """
+    tracker = PipelineTracker("ingestion", source)
+    active_pipelines[tracker.id] = tracker
+    
+    try:
+        parent_id = f"parent_{uuid.uuid4().hex[:12]}"
+        
+        # Step 1: Extract
+        tracker.start_step("extract")
+        domain_name = extract_domain_name(source) if doc_type == "website" else ""
+        
+        # Count element types for visibility
+        element_type_counts = {}
+        for c in chunks_with_metadata:
+            et = c.get("element_type", "Unknown")
+            element_type_counts[et] = element_type_counts.get(et, 0) + 1
+        
+        tracker.complete_step("extract", 
+            doc_type=doc_type, 
+            text_length=len(full_text),
+            images_count=len(images) if images else 0,
+            element_types=element_type_counts
+        )
+        
+        # Save full document with element type info
+        doc_metadata = {
+            "source": source,
+            "type": doc_type,
+            "file_path": file_path,
+            "title": metadata.get("title", source),
+            "summary": metadata.get("summary", ""),
+            "domain": domain_name,
+            "chunker_type": chunker_type,
+            "element_type_counts": element_type_counts
+        }
+        save_full_document(parent_id, full_text, doc_metadata, images=images)
+        
+        # Step 2: Chunking (already done by Unstructured)
+        tracker.start_step("chunk")
+        tracker.complete_step("chunk", 
+            chunks_count=len(chunks_with_metadata), 
+            chunker_type=chunker_type,
+            element_types=element_type_counts,
+            avg_chunk_size=round(len(full_text) / len(chunks_with_metadata)) if chunks_with_metadata else 0
+        )
+        
+        # Emoji based on chunker type
+        chunker_emoji = "🔧" if chunker_type == "unstructured" else ("🧠" if chunker_type == "semantic" else "📏")
+        print(f"📦 Created {len(chunks_with_metadata)} chunks using {chunker_emoji} {chunker_type} chunker")
+        print(f"📊 Element types: {element_type_counts}")
+        
+        # Step 3: Embedding
+        tracker.start_step("embed")
+        metadata_list = []
+        plain_chunks = []  # For BM25
+        total_embed_cost = 0
+        total_tokens = 0
+        
+        for i, chunk_data in enumerate(chunks_with_metadata):
+            chunk_text = chunk_data.get("text", "")
+            element_type = chunk_data.get("element_type", "Unknown")
+            chunk_extra_meta = chunk_data.get("metadata", {})
+            
+            if not chunk_text.strip():
+                continue
+            
+            enhanced_text = f"{domain_name} - {chunk_text}" if domain_name else chunk_text
+            
+            chunk_metadata = {
+                "text": enhanced_text,
+                "source": source,
+                "type": doc_type,
+                "filename": source,
+                "file_path": file_path,
+                "title": metadata.get("title", source),
+                "summary": metadata.get("summary", ""),
+                "parent_id": parent_id,
+                "chunk_index": i,
+                "chunk_type": chunker_type,
+                "element_type": element_type,  # NEW: Table, NarrativeText, Title, ListItem, etc.
+                "domain": domain_name,
+                "has_table": element_type == "Table" or chunk_extra_meta.get("has_table", False)
+            }
+            
+            # Add page number if available
+            if "page_number" in chunk_extra_meta:
+                chunk_metadata["page_number"] = chunk_extra_meta["page_number"]
+            
+            # Calculate embedding cost
+            embed_calc = CostTracker.calculate_embedding_cost(chunk_text)
+            total_embed_cost += embed_calc["cost"]
+            total_tokens += embed_calc["tokens"]
+            
+            vector = embeddings.embed_query(chunk_text)
+            
+            if i == 0:
+                tracker.complete_step("embed", model="text-embedding-3-large", dimensions=3072)
+                tracker.start_step("store_vectors")
+            
+            index.upsert(vectors=[{
+                "id": f"{parent_id}_chunk_{i}",
+                "values": vector,
+                "metadata": chunk_metadata
+            }])
+            
+            metadata_list.append(chunk_metadata)
+            plain_chunks.append(chunk_text)
+        
+        # Log embedding cost
+        CostTracker.log_cost(
+            service="openai",
+            model="text-embedding-3-large",
+            operation="embedding",
+            quantity=total_tokens,
+            unit="tokens",
+            unit_price=API_PRICING["openai"]["text-embedding-3-large"]["price_per_million_tokens"],
+            total_cost=total_embed_cost,
+            source=source,
+            pipeline_id=tracker.id,
+            chunks=len(plain_chunks)
+        )
+        
+        tracker.complete_step("store_vectors", vectors_stored=len(plain_chunks), index="pinecone")
+        
+        # Step 4: Store BM25
+        tracker.start_step("store_bm25")
+        add_to_bm25_index(plain_chunks, metadata_list)
+        tracker.complete_step("store_bm25", entries_added=len(plain_chunks))
+        
+        # Finish tracking
+        tracker.finish(
+            total_chunks=len(plain_chunks),
+            chunker_type=chunker_type,
+            element_types=element_type_counts,
+            images_count=len(images) if images else 0,
+            embedding_cost=total_embed_cost
+        )
+        
+        return len(plain_chunks), chunker_type, element_type_counts
+        
+    except Exception as e:
+        tracker.error_step("embed", str(e))
+        tracker.finish(error=str(e))
+        raise
+    finally:
+        if tracker.id in active_pipelines:
+            del active_pipelines[tracker.id]
+
 # ==================== API Endpoints ====================
 
 @app.get("/")
@@ -1445,6 +1787,93 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
     chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
     yield done_event(f"✅ Ingested with {total_chunks} chunks {chunker_emoji}", total_chunks, chunker_type=chunker_type, images_count=img_count)
 
+def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_text: str, source: str, doc_type: str, file_path: str, metadata: dict, chunker_type: str = "unstructured", images: List[dict] = None):
+    """Generator that yields progress updates during Unstructured ingestion"""
+    
+    parent_id = f"parent_{uuid.uuid4().hex[:12]}"
+    domain_name = extract_domain_name(source) if doc_type == "website" else ""
+    
+    # Count element types
+    element_type_counts = {}
+    for c in chunks_with_metadata:
+        et = c.get("element_type", "Unknown")
+        element_type_counts[et] = element_type_counts.get(et, 0) + 1
+    
+    yield progress_event("saving_doc", 40, "Saving document...")
+    
+    save_full_document(parent_id, full_text, {
+        "source": source,
+        "type": doc_type,
+        "file_path": file_path,
+        "title": metadata.get("title", source),
+        "summary": metadata.get("summary", ""),
+        "domain": domain_name,
+        "chunker_type": chunker_type,
+        "element_type_counts": element_type_counts
+    }, images=images)
+    
+    total_chunks = len(chunks_with_metadata)
+    
+    # Show element types in progress
+    element_summary = ", ".join([f"{v} {k}" for k, v in element_type_counts.items()])
+    img_count = len(images) if images else 0
+    yield progress_event("chunking", 50, f"🔧 Unstructured created {total_chunks} chunks ({element_summary})", 
+                        chunker_type=chunker_type, element_types=element_type_counts)
+    
+    metadata_list = []
+    plain_chunks = []
+    
+    for i, chunk_data in enumerate(chunks_with_metadata):
+        chunk_text = chunk_data.get("text", "")
+        element_type = chunk_data.get("element_type", "Unknown")
+        
+        if not chunk_text.strip():
+            continue
+        
+        # Calculate progress (50% to 95% for embeddings)
+        embed_progress = 50 + int((i / total_chunks) * 45)
+        yield progress_event("embedding", embed_progress, f"Embedding chunk {i+1}/{total_chunks} [{element_type}]...")
+        
+        enhanced_text = f"{domain_name} - {chunk_text}" if domain_name else chunk_text
+        
+        chunk_metadata = {
+            "text": enhanced_text,
+            "source": source,
+            "type": doc_type,
+            "filename": source,
+            "file_path": file_path,
+            "title": metadata.get("title", source),
+            "summary": metadata.get("summary", ""),
+            "parent_id": parent_id,
+            "chunk_index": i,
+            "chunk_type": chunker_type,
+            "element_type": element_type,  # NEW: Table, NarrativeText, Title, etc.
+            "domain": domain_name,
+            "has_table": element_type == "Table"
+        }
+        
+        vector = embeddings.embed_query(chunk_text)
+        index.upsert(vectors=[{
+            "id": f"{parent_id}_chunk_{i}",
+            "values": vector,
+            "metadata": chunk_metadata
+        }])
+        
+        metadata_list.append(chunk_metadata)
+        plain_chunks.append(chunk_text)
+    
+    yield progress_event("bm25", 97, "Adding to BM25 index...")
+    add_to_bm25_index(plain_chunks, metadata_list)
+    
+    # Include element types in done message
+    yield done_event(
+        f"✅ Ingested with {len(plain_chunks)} chunks 🔧 ({element_summary})", 
+        len(plain_chunks), 
+        chunker_type=chunker_type, 
+        element_types=element_type_counts,
+        images_count=img_count
+    )
+
 # ==================== Streaming Scrape Endpoint ====================
 
 @app.get("/scrape/stream")
@@ -1463,28 +1892,51 @@ async def scrape_website_stream(url: str):
             
             yield progress_event("parsing", 20, "Parsing HTML content...")
             
-            # Extract images BEFORE removing elements
+            # Extract images BEFORE parsing
             images = extract_images_from_page(url, html_content)
-            
-            soup = BeautifulSoup(html_content, 'html.parser')
-            for element in soup(['script', 'style', 'nav', 'footer', 'header']):
-                element.decompose()
-            
-            text = soup.get_text(separator='\n', strip=True)
-            lines = [line.strip() for line in text.splitlines() if line.strip()]
-            full_text = '\n'.join(lines)
-            
-            if not full_text:
-                yield error_event("No content found on page")
-                return
-            
             yield progress_event("images", 25, f"Found {len(images)} images")
-            yield progress_event("metadata", 30, "Extracting metadata...")
-            metadata = extract_metadata(full_text, "website")
             
-            # Use the progress generator for ingestion with images
-            for event in ingest_with_progress(full_text, url, "website", "", metadata, images=images):
-                yield event
+            # Use Unstructured.io if available
+            if UNSTRUCTURED_AVAILABLE:
+                yield progress_event("unstructured", 30, "🔧 Using Unstructured.io for smart parsing...")
+                full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, url)
+                
+                if not full_text or not chunks_with_metadata:
+                    yield error_event("No content found on page")
+                    return
+                
+                # Count element types
+                element_type_counts = {}
+                for c in chunks_with_metadata:
+                    et = c.get("element_type", "Unknown")
+                    element_type_counts[et] = element_type_counts.get(et, 0) + 1
+                
+                yield progress_event("metadata", 35, "Extracting metadata...")
+                metadata = extract_metadata(full_text[:3000], "website")
+                
+                # Use streaming progress with Unstructured chunks
+                for event in ingest_with_progress_unstructured(chunks_with_metadata, full_text, url, "website", "", metadata, chunker_type, images=images):
+                    yield event
+            else:
+                # Fallback to BeautifulSoup
+                yield progress_event("parsing", 30, "Parsing with BeautifulSoup...")
+                soup = BeautifulSoup(html_content, 'html.parser')
+                for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+                    element.decompose()
+                
+                text = soup.get_text(separator='\n', strip=True)
+                lines = [line.strip() for line in text.splitlines() if line.strip()]
+                full_text = '\n'.join(lines)
+                
+                if not full_text:
+                    yield error_event("No content found on page")
+                    return
+                
+                yield progress_event("metadata", 35, "Extracting metadata...")
+                metadata = extract_metadata(full_text, "website")
+                
+                for event in ingest_with_progress(full_text, url, "website", "", metadata, images=images):
+                    yield event
                 
         except Exception as e:
             yield error_event(str(e))
@@ -1690,6 +2142,118 @@ def debug_search(q: str):
         "3_hybrid_combined": hybrid_docs,
         "4_after_reranking": reranked_docs,
         "display_threshold": 0.30
+    }
+
+@app.get("/debug-chunks")
+def debug_chunks(doc_id: str = None, source_url: str = None, limit: int = 50):
+    """Debug endpoint to see stored chunks with their element types and structure"""
+    
+    results = {
+        "filter": {"doc_id": doc_id, "source_url": source_url},
+        "chunks": [],
+        "element_type_summary": {},
+        "chunker_type_summary": {},
+        "total_found": 0
+    }
+    
+    try:
+        # Query Pinecone for chunks
+        dummy_vector = embeddings.embed_query("test")
+        
+        filter_dict = {}
+        if doc_id:
+            filter_dict["parent_id"] = {"$eq": doc_id}
+        
+        pinecone_results = index.query(
+            vector=dummy_vector,
+            top_k=limit,
+            include_metadata=True,
+            filter=filter_dict if filter_dict else None
+        )
+        
+        for match in pinecone_results['matches']:
+            meta = match['metadata']
+            
+            # Filter by source URL if specified
+            if source_url and source_url not in meta.get('source', ''):
+                continue
+            
+            chunk_info = {
+                "id": match['id'],
+                "chunk_index": meta.get('chunk_index', 0),
+                "element_type": meta.get('element_type', 'Unknown'),  # NEW: from Unstructured
+                "chunk_type": meta.get('chunk_type', 'Unknown'),  # semantic/unstructured/fallback
+                "has_table": meta.get('has_table', False),
+                "source": meta.get('source', 'N/A')[:80],
+                "title": meta.get('title', 'N/A'),
+                "text_preview": meta.get('text', '')[:300] + "..." if len(meta.get('text', '')) > 300 else meta.get('text', ''),
+                "text_length": len(meta.get('text', '')),
+                "page_number": meta.get('page_number', None)
+            }
+            
+            results["chunks"].append(chunk_info)
+            
+            # Count element types
+            et = chunk_info["element_type"]
+            results["element_type_summary"][et] = results["element_type_summary"].get(et, 0) + 1
+            
+            # Count chunker types
+            ct = chunk_info["chunk_type"]
+            results["chunker_type_summary"][ct] = results["chunker_type_summary"].get(ct, 0) + 1
+        
+        # Sort by chunk_index
+        results["chunks"].sort(key=lambda x: x.get('chunk_index', 0))
+        results["total_found"] = len(results["chunks"])
+        
+        return results
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/debug-document/{doc_id}")
+def debug_document(doc_id: str):
+    """Debug endpoint to see full document details including chunking info"""
+    
+    try:
+        doc = load_full_document(doc_id)
+        
+        if not doc:
+            return {"error": "Document not found"}
+        
+        # Get chunks for this document
+        chunks_response = debug_chunks(doc_id=doc_id, limit=100)
+        
+        return {
+            "document": {
+                "id": doc.get("id", doc_id),
+                "metadata": doc.get("metadata", {}),
+                "content_preview": doc.get("content", "")[:500] + "..." if len(doc.get("content", "")) > 500 else doc.get("content", ""),
+                "content_length": len(doc.get("content", "")),
+                "images_count": len(doc.get("images", []))
+            },
+            "chunking": {
+                "total_chunks": chunks_response.get("total_found", 0),
+                "element_type_summary": chunks_response.get("element_type_summary", {}),
+                "chunker_type_summary": chunks_response.get("chunker_type_summary", {}),
+            },
+            "chunks": chunks_response.get("chunks", [])[:10]  # First 10 chunks only
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/unstructured-status")
+def unstructured_status():
+    """Check if Unstructured.io is available and working"""
+    return {
+        "unstructured_available": UNSTRUCTURED_AVAILABLE,
+        "message": "✅ Unstructured.io is loaded and ready" if UNSTRUCTURED_AVAILABLE else "⚠️ Unstructured.io is not available, using fallback parsing",
+        "capabilities": {
+            "html_tables": UNSTRUCTURED_AVAILABLE,
+            "pdf_structure": UNSTRUCTURED_AVAILABLE,
+            "docx_structure": UNSTRUCTURED_AVAILABLE,
+            "smart_chunking": UNSTRUCTURED_AVAILABLE
+        }
     }
 
 @app.get("/frontend")
@@ -2180,30 +2744,59 @@ def scrape_website(request: UrlRequest):
         
         html_content = response.text
         
-        # Extract images BEFORE removing elements
+        # Extract images BEFORE parsing (keep existing function)
         images = extract_images_from_page(url, html_content)
         print(f"🖼️ Extracted {len(images)} images from {url}")
-        
-        soup = BeautifulSoup(html_content, 'html.parser')
-        for element in soup(['script', 'style', 'nav', 'footer', 'header']):
-            element.decompose()
-        
-        text = soup.get_text(separator='\n', strip=True)
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        full_text = '\n'.join(lines)
-        
-        if not full_text:
-            return IngestResponse(success=False, message="No content found")
-        
-        metadata = extract_metadata(full_text, "website")
         
         from urllib.parse import urlparse
         domain = urlparse(url).netloc
         
-        chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, url, "website", "", metadata, images=images)
-        chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
-        
-        return IngestResponse(success=True, message=f"✅ Scraped {domain} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
+        # Use Unstructured.io for smart parsing (handles tables correctly!)
+        if UNSTRUCTURED_AVAILABLE:
+            print(f"🔧 Using Unstructured.io for {url}")
+            full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, url)
+            
+            if not full_text or not chunks_with_metadata:
+                return IngestResponse(success=False, message="No content found")
+            
+            metadata = extract_metadata(full_text[:3000], "website")
+            
+            # Use new ingestion function with element types
+            num_chunks, chunker_type, element_types = ingest_with_unstructured(
+                chunks_with_metadata, full_text, url, "website", "", metadata, 
+                chunker_type=chunker_type, images=images
+            )
+            
+            # Build element types summary for message
+            element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
+            chunker_emoji = "🔧"  # Unstructured emoji
+            
+            return IngestResponse(
+                success=True, 
+                message=f"✅ Scraped {domain} with {num_chunks} chunks {chunker_emoji} ({element_summary}), {len(images)} images", 
+                chunks=num_chunks, 
+                chunker_type=chunker_type,
+                element_types=element_types
+            )
+        else:
+            # Fallback to old BeautifulSoup method
+            print(f"⚠️ Unstructured not available, using BeautifulSoup for {url}")
+            soup = BeautifulSoup(html_content, 'html.parser')
+            for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+                element.decompose()
+            
+            text = soup.get_text(separator='\n', strip=True)
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            full_text = '\n'.join(lines)
+            
+            if not full_text:
+                return IngestResponse(success=False, message="No content found")
+            
+            metadata = extract_metadata(full_text, "website")
+            chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, url, "website", "", metadata, images=images)
+            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+            
+            return IngestResponse(success=True, message=f"✅ Scraped {domain} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
     
     except Exception as e:
         return IngestResponse(success=False, message=str(e))
