@@ -828,7 +828,7 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
 
 # ==================== Playwright for Dynamic Pages ====================
 
-async def fetch_page_with_playwright(url: str, wait_time: int = 5000, scroll: bool = True) -> str:
+async def fetch_page_with_playwright(url: str, wait_time: int = 5000, scroll: bool = True, progress_callback=None) -> str:
     """
     Fetch a page using Playwright headless browser (async version).
     This renders JavaScript and returns the fully loaded HTML.
@@ -837,38 +837,47 @@ async def fetch_page_with_playwright(url: str, wait_time: int = 5000, scroll: bo
         url: The URL to fetch
         wait_time: Time to wait for JS to render (ms)
         scroll: Whether to scroll the page to trigger lazy loading
+        progress_callback: Optional async function to report progress
     
     Returns:
         The fully rendered HTML content
     """
+    async def log_progress(message):
+        print(message)
+        if progress_callback:
+            await progress_callback(message)
+    
     if not PLAYWRIGHT_AVAILABLE:
-        print("⚠️ Playwright not available, falling back to requests")
+        await log_progress("⚠️ Playwright not available, falling back to requests")
         response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         return response.text
     
     try:
-        print(f"🎭 Fetching with Playwright (async): {url}")
+        await log_progress(f"🎭 [1/7] Starting Playwright browser...")
         
         async with async_playwright() as p:
-            # Launch headless Chromium
+            await log_progress(f"🎭 [2/7] Launching Chromium...")
             browser = await p.chromium.launch(headless=True)
+            
+            await log_progress(f"🎭 [3/7] Creating browser context...")
             context = await browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 viewport={'width': 1920, 'height': 1080}
             )
             page = await context.new_page()
             
-            # Navigate to the page - use 'load' instead of 'networkidle' (faster)
-            # Increase timeout to 60 seconds
+            await log_progress(f"🎭 [4/7] Navigating to {url[:50]}...")
             await page.goto(url, wait_until='load', timeout=60000)
             
-            # Wait for dynamic content to load
+            await log_progress(f"🎭 [5/7] Waiting for JavaScript to render ({wait_time/1000}s)...")
             await page.wait_for_timeout(wait_time)
             
             # Try to click "Expand All" or similar buttons if they exist
             try:
                 expand_buttons = await page.query_selector_all('button:has-text("Expand"), button:has-text("Show All"), [aria-expanded="false"]')
-                for btn in expand_buttons[:10]:  # Limit to first 10
+                if expand_buttons:
+                    await log_progress(f"🎭 [5.5/7] Found {len(expand_buttons)} expandable sections, clicking...")
+                for btn in expand_buttons[:10]:
                     try:
                         await btn.click()
                         await page.wait_for_timeout(300)
@@ -877,35 +886,33 @@ async def fetch_page_with_playwright(url: str, wait_time: int = 5000, scroll: bo
             except:
                 pass
             
-            # Scroll to trigger lazy loading if enabled
             if scroll:
-                # Scroll down multiple times to load all content
-                for i in range(8):  # More scroll iterations
+                await log_progress(f"🎭 [6/7] Scrolling page to load dynamic content...")
+                for i in range(8):
                     await page.evaluate('window.scrollTo(0, document.body.scrollHeight * {})'.format((i + 1) / 8))
                     await page.wait_for_timeout(800)
                 
-                # Scroll back to top
                 await page.evaluate('window.scrollTo(0, 0)')
                 await page.wait_for_timeout(500)
             
-            # Final wait for any lazy-loaded content
+            await log_progress(f"🎭 [6.5/7] Final wait for lazy-loaded content...")
             await page.wait_for_timeout(2000)
             
-            # Get the fully rendered HTML
+            await log_progress(f"🎭 [7/7] Extracting rendered HTML...")
             html_content = await page.content()
             
             await browser.close()
             
-            print(f"✅ Playwright fetched {len(html_content)} bytes from {url}")
+            await log_progress(f"✅ Playwright fetched {len(html_content):,} bytes from {url[:50]}")
             return html_content
             
     except Exception as e:
-        print(f"⚠️ Playwright fetch failed: {e}, falling back to requests")
+        await log_progress(f"⚠️ Playwright fetch failed: {e}, falling back to requests")
         try:
             response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
             return response.text
         except Exception as req_e:
-            print(f"❌ Requests also failed: {req_e}")
+            await log_progress(f"❌ Requests also failed: {req_e}")
             raise
 
 def should_use_playwright(url: str) -> bool:
@@ -1055,15 +1062,23 @@ def list_all_conversations() -> List[dict]:
     for filename in os.listdir(CONVERSATIONS_FOLDER):
         if filename.endswith('.json'):
             path = os.path.join(CONVERSATIONS_FOLDER, filename)
-            with open(path, 'r') as f:
-                conv = json.load(f)
-                conversations.append({
-                    "id": conv['id'],
-                    "title": conv['title'],
-                    "created_at": conv['created_at'],
-                    "updated_at": conv['updated_at'],
-                    "message_count": len(conv['messages'])
-                })
+            try:
+                with open(path, 'r') as f:
+                    content = f.read()
+                    if not content.strip():  # Empty file
+                        print(f"⚠️ Skipping empty conversation file: {filename}")
+                        continue
+                    conv = json.loads(content)
+                    conversations.append({
+                        "id": conv['id'],
+                        "title": conv['title'],
+                        "created_at": conv['created_at'],
+                        "updated_at": conv['updated_at'],
+                        "message_count": len(conv['messages'])
+                    })
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"⚠️ Skipping corrupted conversation file {filename}: {e}")
+                continue
     conversations.sort(key=lambda x: x['updated_at'], reverse=True)
     return conversations
 
@@ -1957,37 +1972,64 @@ async def scrape_website_stream(url: str):
     
     async def generate():
         try:
-            yield progress_event("fetching", 10, f"Fetching {url}...")
+            # Check if we should use Playwright for this URL
+            use_playwright = PLAYWRIGHT_AVAILABLE and should_use_playwright(url)
             
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(url, headers=headers, timeout=15)
-            response.raise_for_status()
+            if use_playwright:
+                # Detailed Playwright progress
+                yield progress_event("playwright_start", 5, f"🎭 Detected dynamic site, using Playwright...")
+                yield progress_event("playwright_browser", 8, f"🎭 [1/7] Starting headless browser...")
+                yield progress_event("playwright_navigate", 12, f"🎭 [2/7] Navigating to {url[:40]}...")
+                
+                html_content = await fetch_page_with_playwright(url)
+                html_size_kb = len(html_content) / 1024
+                
+                yield progress_event("playwright_done", 18, f"🎭 ✓ Rendered page ({html_size_kb:.1f} KB)")
+            else:
+                yield progress_event("fetching", 10, f"📄 Fetching {url}...")
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                response = requests.get(url, headers=headers, timeout=15)
+                response.raise_for_status()
+                html_content = response.text
+                html_size_kb = len(html_content) / 1024
+                yield progress_event("fetched", 18, f"📄 ✓ Fetched ({html_size_kb:.1f} KB)")
             
-            html_content = response.text
-            
-            yield progress_event("parsing", 20, "Parsing HTML content...")
+            yield progress_event("parsing", 20, "🔍 Analyzing HTML structure...")
             
             # Extract images BEFORE parsing
             images = extract_images_from_page(url, html_content)
-            yield progress_event("images", 25, f"Found {len(images)} images")
+            yield progress_event("images", 25, f"🖼️ Found {len(images)} images")
             
             # Use Unstructured.io if available
             if UNSTRUCTURED_AVAILABLE:
-                yield progress_event("unstructured", 30, "🔧 Using Unstructured.io for smart parsing...")
+                yield progress_event("unstructured", 28, "🔧 Starting Unstructured.io smart parsing...")
+                yield progress_event("unstructured_parse", 32, "🔧 Detecting tables, text blocks, headers...")
+                
                 full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, url)
                 
                 if not full_text or not chunks_with_metadata:
                     yield error_event("No content found on page")
                     return
                 
-                yield progress_event("metadata", 35, "Extracting metadata...")
+                # Count element types
+                element_types = {}
+                for c in chunks_with_metadata:
+                    et = c.get("element_type", "Unknown")
+                    element_types[et] = element_types.get(et, 0) + 1
+                element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
+                
+                yield progress_event("unstructured_done", 38, f"🔧 ✓ Found {len(chunks_with_metadata)} chunks ({element_summary})")
+                
+                yield progress_event("metadata", 40, "📋 Extracting metadata...")
                 metadata = extract_metadata(full_text[:3000], "website")
+                
+                yield progress_event("embedding_start", 42, f"🧠 Starting embedding of {len(chunks_with_metadata)} chunks...")
                 
                 for event in ingest_with_progress_unstructured(chunks_with_metadata, full_text, url, "website", "", metadata, chunker_type, images=images):
                     yield event
             else:
                 # Fallback to BeautifulSoup
-                yield progress_event("parsing", 30, "Parsing with BeautifulSoup...")
+                yield progress_event("parsing", 30, "📝 Parsing with BeautifulSoup...")
                 soup = BeautifulSoup(html_content, 'html.parser')
                 for element in soup(['script', 'style', 'nav', 'footer', 'header']):
                     element.decompose()
@@ -2000,7 +2042,7 @@ async def scrape_website_stream(url: str):
                     yield error_event("No content found on page")
                     return
                 
-                yield progress_event("metadata", 35, "Extracting metadata...")
+                yield progress_event("metadata", 35, "📋 Extracting metadata...")
                 metadata = extract_metadata(full_text, "website")
                 
                 for event in ingest_with_progress(full_text, url, "website", "", metadata, images=images):
@@ -2026,7 +2068,14 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
             total_images = 0
             used_playwright = False
             
-            yield progress_event("starting", 5, f"Starting recursive scrape from {url}")
+            # Check if this is a dynamic site
+            is_dynamic_site = PLAYWRIGHT_AVAILABLE and should_use_playwright(url)
+            
+            if is_dynamic_site:
+                yield progress_event("starting", 2, f"🎭 Detected dynamic site - will use Playwright for JavaScript rendering")
+                yield progress_event("starting", 5, f"🚀 Starting recursive scrape from {url}")
+            else:
+                yield progress_event("starting", 5, f"🚀 Starting recursive scrape from {url}")
             
             while to_visit and len(visited) < max_pages:
                 current_url, depth = to_visit.pop(0)
@@ -2040,21 +2089,31 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                 # Calculate overall progress based on pages
                 overall_progress = min(5 + int((page_num / max_pages) * 90), 95)
                 
-                yield progress_event("scraping", overall_progress, 
-                    f"Scraping page {page_num}/{max_pages}: {current_url[:50]}...",
-                    current_page=page_num, total_pages=max_pages, current_url=current_url)
-                
                 try:
                     # Use Playwright for dynamic sites, requests for static
                     use_playwright = PLAYWRIGHT_AVAILABLE and should_use_playwright(current_url)
                     
                     if use_playwright:
                         used_playwright = True
-                        yield progress_event("scraping", overall_progress, 
-                            f"🎭 Rendering JS page {page_num}: {current_url[:40]}...",
+                        yield progress_event("playwright", overall_progress, 
+                            f"🎭 [{page_num}/{max_pages}] Starting browser for: {current_url[:35]}...",
                             current_page=page_num, total_pages=max_pages, current_url=current_url)
+                        
+                        yield progress_event("playwright_render", overall_progress, 
+                            f"🎭 [{page_num}/{max_pages}] Rendering JavaScript (this may take 20-40 seconds)...",
+                            current_page=page_num, total_pages=max_pages)
+                        
                         html_content = await fetch_page_with_playwright(current_url)
+                        html_size_kb = len(html_content) / 1024
+                        
+                        yield progress_event("playwright_done", overall_progress, 
+                            f"🎭 [{page_num}/{max_pages}] ✓ Rendered {html_size_kb:.0f}KB",
+                            current_page=page_num, total_pages=max_pages)
                     else:
+                        yield progress_event("scraping", overall_progress, 
+                            f"📄 [{page_num}/{max_pages}] Fetching: {current_url[:45]}...",
+                            current_page=page_num, total_pages=max_pages, current_url=current_url)
+                        
                         headers = {'User-Agent': 'Mozilla/5.0'}
                         response = requests.get(current_url, headers=headers, timeout=10)
                         response.raise_for_status()
@@ -2063,6 +2122,9 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                     # Extract links if we haven't reached max depth
                     if depth < max_depth:
                         new_links = extract_links_from_page(current_url, html_content, same_path_only)
+                        if new_links:
+                            yield progress_event("links", overall_progress, 
+                                f"🔗 [{page_num}/{max_pages}] Found {len(new_links)} links to explore")
                         for link in new_links:
                             if link not in visited and len(to_visit) + len(visited) < max_pages * 2:
                                 to_visit.append((link, depth + 1))
@@ -2073,6 +2135,9 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                     
                     # Parse content using Unstructured if available
                     if UNSTRUCTURED_AVAILABLE:
+                        yield progress_event("parsing", overall_progress, 
+                            f"🔧 [{page_num}/{max_pages}] Parsing with Unstructured.io...")
+                        
                         full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, current_url)
                         
                         if full_text and len(full_text) > 100:
