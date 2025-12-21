@@ -43,22 +43,17 @@ Pillow
 reportlab
 
 # ==================== Unstructured.io ====================
-# Core unstructured library
+# IMPORTANT: Install headless opencv BEFORE unstructured to avoid libGL issues
+opencv-python-headless>=4.8.0
+
+# Core unstructured library (will use the headless opencv we installed above)
 unstructured>=0.10.0
 
 # File type support
 python-magic>=0.4.27
 lxml>=4.9.0
 
-# For HTML/XML parsing (already have beautifulsoup4)
 # For PDF support
 pdf2image>=1.16.0
 pdfminer.six>=20221105
-
-# For DOCX support (already have python-docx)
-# For XLSX support (already have openpyxl)
-# For PPTX support (already have python-pptx)
-
-# OCR support (optional but helpful)
-# Note: tesseract-ocr installed via apt in Dockerfile
 
