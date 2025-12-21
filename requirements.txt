@@ -42,21 +42,23 @@ PyMuPDF
 Pillow
 reportlab
 
-# ==================== NEW: Unstructured.io ====================
-# Smart document parsing with table support
+# ==================== Unstructured.io ====================
+# Core unstructured library
 unstructured>=0.10.0
-unstructured[html]
-unstructured[pdf]
-unstructured[docx]
-unstructured[xlsx]
-unstructured[pptx]
 
-# Unstructured dependencies
-lxml>=4.9.0
+# File type support
 python-magic>=0.4.27
-# Note: On Windows, you may need python-magic-bin instead
+lxml>=4.9.0
 
-# ==================== END NEW ====================
+# For HTML/XML parsing (already have beautifulsoup4)
+# For PDF support
+pdf2image>=1.16.0
+pdfminer.six>=20221105
 
-# Railway rebuild marker
-# Last updated: Unstructured.io integration
+# For DOCX support (already have python-docx)
+# For XLSX support (already have openpyxl)
+# For PPTX support (already have python-pptx)
+
+# OCR support (optional but helpful)
+# Note: tesseract-ocr installed via apt in Dockerfile
+
