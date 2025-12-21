@@ -1051,15 +1051,40 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
         
         print(f"📚 Full documents loaded: {len(full_documents)}")
         
+        # TOKEN LIMIT to prevent 429 errors
+        MAX_CONTEXT_TOKENS = 15000  # Leave room for system prompt, history, and response
+        
+        def estimate_tokens(text):
+            return max(1, len(text) // 4)
+        
         context = ""
+        context_tokens = 0
         used_parent_ids = set()
+        truncated = False
         
         # Add Documents Context (from full documents)
         for doc in full_documents:
             parent_id = doc.get('id', '')
+            doc_content = doc['content']
+            doc_tokens = estimate_tokens(doc_content)
+            
+            # Check if adding this doc would exceed limit
+            if context_tokens + doc_tokens > MAX_CONTEXT_TOKENS:
+                # Try to add partial content
+                remaining_tokens = MAX_CONTEXT_TOKENS - context_tokens
+                if remaining_tokens > 500:  # Only add if we can fit meaningful content
+                    # Truncate to fit
+                    max_chars = remaining_tokens * 4
+                    doc_content = doc_content[:max_chars] + "\n... [truncated due to length]"
+                    truncated = True
+                else:
+                    truncated = True
+                    continue  # Skip this doc entirely
+            
             used_parent_ids.add(parent_id)
             context += f"=== {doc['metadata'].get('title', 'Document')} ===\n"
-            context += doc['content'] + "\n\n"
+            context += doc_content + "\n\n"
+            context_tokens = estimate_tokens(context)
             
             # Collect images from document
             doc_images = doc.get('images', [])
@@ -1067,24 +1092,43 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
                 for img in doc_images:
                     img['doc_title'] = doc['metadata'].get('title', 'Document')
                     all_images.append(img)
+            
+            # Stop if we've reached the limit
+            if context_tokens >= MAX_CONTEXT_TOKENS:
+                break
         
-        # Fallback: Add chunk texts for documents not found locally
+        # Fallback: Add chunk texts for documents not found locally (if we have room)
         for parent_id, chunk_data in chunk_texts.items():
-            if parent_id not in used_parent_ids:
+            if parent_id not in used_parent_ids and context_tokens < MAX_CONTEXT_TOKENS:
                 print(f"⚠️ Using fallback chunks for: {chunk_data['title']}")
-                context += f"=== {chunk_data['title']} ===\n"
+                chunk_content = f"=== {chunk_data['title']} ===\n"
                 # Join unique chunks
                 unique_texts = list(set(chunk_data['texts']))
-                context += "\n".join(unique_texts[:3]) + "\n\n"  # Limit to 3 chunks
+                chunk_content += "\n".join(unique_texts[:3]) + "\n\n"  # Limit to 3 chunks
+                
+                chunk_tokens = estimate_tokens(chunk_content)
+                if context_tokens + chunk_tokens <= MAX_CONTEXT_TOKENS:
+                    context += chunk_content
+                    context_tokens += chunk_tokens
+                else:
+                    truncated = True
         
-        # Add Memory Context
-        if memory_contexts:
-            context += "=== Previous Conversations (Memory) ===\n"
+        # Add Memory Context (if we have room)
+        if memory_contexts and context_tokens < MAX_CONTEXT_TOKENS:
+            memory_content = "=== Previous Conversations (Memory) ===\n"
             for mem in memory_contexts:
-                context += f"Q: {mem['question']}\n"
-                context += f"A: {mem['answer']}\n\n"
+                memory_content += f"Q: {mem['question']}\n"
+                memory_content += f"A: {mem['answer']}\n\n"
+            
+            memory_tokens = estimate_tokens(memory_content)
+            if context_tokens + memory_tokens <= MAX_CONTEXT_TOKENS:
+                context += memory_content
+                context_tokens += memory_tokens
         
-        print(f"📝 Final context length: {len(context)}")
+        if truncated:
+            print(f"⚠️ Context was truncated to fit within {MAX_CONTEXT_TOKENS} token limit")
+        
+        print(f"📝 Final context length: {len(context)} chars (~{context_tokens} tokens)")
         print(f"🖼️ Images found: {len(all_images)}")
         
         # Remove duplicate sources
@@ -3110,17 +3154,28 @@ async def generate_stream(question: str, user_id: str, conversation_id: str):
     # Add user message
     add_message_to_conversation(conversation_id, "user", question)
     
-    # Get conversation history
+    # Get conversation history (LIMITED to prevent token overflow)
     conv = load_conversation(conversation_id)
     conversation_history = ""
+    MAX_HISTORY_TOKENS = 2000  # Limit history to ~2000 tokens
+    
     if conv and len(conv['messages']) > 1:
-        recent_messages = conv['messages'][-7:-1]
+        recent_messages = conv['messages'][-5:-1]  # Reduced from 7 to 5
         if recent_messages:
-            conversation_history = "Recent Conversation:\n"
+            temp_history = "Recent Conversation:\n"
             for msg in recent_messages:
                 role = "User" if msg['role'] == 'user' else "Assistant"
-                content = msg['content'][:1500] + "..." if len(msg['content']) > 1500 else msg['content']
-                conversation_history += f"{role}: {content}\n\n"
+                content = msg['content'][:800] + "..." if len(msg['content']) > 800 else msg['content']  # Reduced from 1500
+                temp_history += f"{role}: {content}\n\n"
+            
+            # Check token limit
+            history_tokens = len(temp_history) // 4
+            if history_tokens > MAX_HISTORY_TOKENS:
+                # Truncate to fit
+                max_chars = MAX_HISTORY_TOKENS * 4
+                conversation_history = temp_history[:max_chars] + "\n... [history truncated]\n"
+            else:
+                conversation_history = temp_history
     
     # Build search query
     search_query = question
@@ -3178,6 +3233,55 @@ Example response format:
 2. Click Add..."
 
 Response:"""
+    
+    # CRITICAL: Final token check before sending to OpenAI
+    MAX_TOTAL_TOKENS = 25000  # Leave headroom below 30000 limit
+    prompt_tokens = len(prompt) // 4
+    
+    if prompt_tokens > MAX_TOTAL_TOKENS:
+        print(f"⚠️ Prompt too large ({prompt_tokens} tokens), truncating context...")
+        # Calculate how much to reduce
+        excess_tokens = prompt_tokens - MAX_TOTAL_TOKENS + 1000  # Extra buffer
+        excess_chars = excess_tokens * 4
+        
+        # Truncate doc_context
+        if len(doc_context) > excess_chars:
+            doc_context = doc_context[:len(doc_context) - excess_chars] + "\n... [context truncated to fit token limit]"
+            
+            # Rebuild prompt with truncated context
+            prompt = f"""You are a friendly and helpful AI assistant.
+
+{conversation_history}
+
+Available Information (Documents + Memory):
+{doc_context if doc_context.strip() else "No specific information found."}
+{image_info}
+
+User Message: {question}
+
+Instructions:
+- Be friendly and conversational
+- If greeting, respond with a friendly greeting
+- Use conversation history to understand context
+- ONLY use information from above - do NOT make up information
+- If no relevant info, say "I don't have specific information about that."
+- Format using markdown (headers, bullet points, bold)
+- NEVER mention "documents", "context", "memory" in your response
+- NEVER list sources in text - shown separately
+- Be thorough - include ALL relevant details
+- When asked to list ALL items, include EVERY item found
+
+**SCREENSHOT EMBEDDING RULE**:
+If SCREENSHOTS are listed above, you MUST embed them in your response.
+Simply COPY the exact line like: ![Screenshot 1](/doc-images/xxx.jpeg)
+Place screenshots after the relevant step they illustrate.
+Example response format:
+"1. Go to Settings
+![Screenshot 1](/doc-images/xxx.jpeg)
+2. Click Add..."
+
+Response:"""
+            print(f"✅ Prompt reduced to ~{len(prompt) // 4} tokens")
     
     # Start generate step tracking
     if tracker:
