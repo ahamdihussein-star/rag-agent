@@ -2372,6 +2372,84 @@ def debug_chunks(doc_id: str = None, source_url: str = None, limit: int = 50):
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/debug-query")
+def debug_query(query: str, top_k: int = 10):
+    """
+    Debug endpoint to see exactly what chunks are retrieved for a query.
+    Shows the raw retrieval results before any processing.
+    """
+    try:
+        # Step 1: Embed the query
+        query_vector = embeddings.embed_query(query)
+        
+        # Step 2: Search Pinecone
+        pinecone_results = index.query(
+            vector=query_vector,
+            top_k=top_k,
+            include_metadata=True
+        )
+        
+        # Step 3: Format results
+        chunks = []
+        for i, match in enumerate(pinecone_results['matches']):
+            meta = match['metadata']
+            text = meta.get('text', '')
+            
+            chunks.append({
+                "rank": i + 1,
+                "score": round(match['score'], 4),
+                "id": match['id'],
+                "element_type": meta.get('element_type', 'Unknown'),
+                "chunk_type": meta.get('chunk_type', 'Unknown'),
+                "source": meta.get('source', 'N/A'),
+                "title": meta.get('title', 'N/A'),
+                "text_length": len(text),
+                "text_preview": text[:500] + "..." if len(text) > 500 else text,
+                "contains_query_terms": {
+                    term: term.lower() in text.lower() 
+                    for term in query.split()[:5]  # Check first 5 words
+                }
+            })
+        
+        # Step 4: Also do BM25 search for comparison
+        bm25_results = []
+        try:
+            bm25_index = load_bm25_index()
+            if bm25_index.get("documents"):
+                query_tokens = query.lower().split()
+                bm25 = BM25Okapi([doc.get("tokens", []) for doc in bm25_index["documents"]])
+                scores = bm25.get_scores(query_tokens)
+                top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:5]
+                
+                for idx in top_indices:
+                    if scores[idx] > 0:
+                        doc = bm25_index["documents"][idx]
+                        bm25_results.append({
+                            "bm25_score": round(scores[idx], 4),
+                            "source": doc.get("metadata", {}).get("source", "N/A"),
+                            "text_preview": doc.get("text", "")[:200]
+                        })
+        except:
+            pass
+        
+        return {
+            "query": query,
+            "embedding_model": "text-embedding-3-small",
+            "top_k": top_k,
+            "pinecone_results_count": len(chunks),
+            "chunks": chunks,
+            "bm25_results": bm25_results,
+            "analysis": {
+                "highest_score": chunks[0]["score"] if chunks else 0,
+                "lowest_score": chunks[-1]["score"] if chunks else 0,
+                "element_types_found": list(set(c["element_type"] for c in chunks)),
+                "sources_found": list(set(c["source"] for c in chunks))[:5]
+            }
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/unstructured-status")
 def unstructured_status():
     """Check if Unstructured.io and Playwright are available and working"""
