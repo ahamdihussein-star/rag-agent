@@ -1389,27 +1389,76 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
         used_parent_ids = set()
         truncated = False
         
-        # Add Documents Context (from full documents)
+        # PRIORITY 1: Use chunk texts FIRST (they contain accurate extracted data like tables)
+        # This is more reliable than full documents which might miss table content
+        seen_chunk_content = set()
+        for parent_id, chunk_data in chunk_texts.items():
+            if context_tokens >= MAX_CONTEXT_TOKENS:
+                truncated = True
+                break
+            
+            # Deduplicate by content
+            content_preview = "".join(chunk_data['texts'])[:500]
+            content_hash = hash(content_preview)
+            
+            if content_hash in seen_chunk_content:
+                print(f"⏭️ Skipping duplicate chunk content: {chunk_data['title'][:40]}")
+                continue
+            
+            seen_chunk_content.add(content_hash)
+            
+            print(f"📝 Using chunk texts for: {chunk_data['title'][:50]}")
+            chunk_content = f"=== {chunk_data['title']} ===\n"
+            
+            # Join unique chunks (these contain the actual extracted data)
+            unique_texts = list(dict.fromkeys(chunk_data['texts']))  # Preserve order, remove dups
+            chunk_content += "\n\n".join(unique_texts) + "\n\n"
+            
+            chunk_tokens = estimate_tokens(chunk_content)
+            if context_tokens + chunk_tokens <= MAX_CONTEXT_TOKENS:
+                context += chunk_content
+                context_tokens += chunk_tokens
+                used_parent_ids.add(parent_id)
+            else:
+                # Try to add partial
+                remaining_tokens = MAX_CONTEXT_TOKENS - context_tokens
+                if remaining_tokens > 500:
+                    max_chars = remaining_tokens * 4
+                    chunk_content = chunk_content[:max_chars] + "\n... [truncated]"
+                    context += chunk_content
+                    context_tokens = MAX_CONTEXT_TOKENS
+                    used_parent_ids.add(parent_id)
+                truncated = True
+                break
+        
+        # PRIORITY 2: Supplement with full documents (for additional context)
+        # Only add if we have room and the parent wasn't already covered by chunks
         for doc in full_documents:
+            if context_tokens >= MAX_CONTEXT_TOKENS:
+                break
+                
             parent_id = doc.get('id', '')
+            
+            # Skip if already covered by chunk texts
+            if parent_id in used_parent_ids:
+                continue
+            
             doc_content = doc['content']
             doc_tokens = estimate_tokens(doc_content)
             
             # Check if adding this doc would exceed limit
             if context_tokens + doc_tokens > MAX_CONTEXT_TOKENS:
-                # Try to add partial content
                 remaining_tokens = MAX_CONTEXT_TOKENS - context_tokens
-                if remaining_tokens > 500:  # Only add if we can fit meaningful content
-                    # Truncate to fit
+                if remaining_tokens > 500:
                     max_chars = remaining_tokens * 4
-                    doc_content = doc_content[:max_chars] + "\n... [truncated due to length]"
+                    doc_content = doc_content[:max_chars] + "\n... [truncated]"
                     truncated = True
                 else:
                     truncated = True
-                    continue  # Skip this doc entirely
+                    continue
             
             used_parent_ids.add(parent_id)
-            context += f"=== {doc['metadata'].get('title', 'Document')} ===\n"
+            context += f"=== {doc['metadata'].get('title', 'Document')} (Full) ===\n"
             context += doc_content + "\n\n"
             context_tokens = estimate_tokens(context)
             
@@ -1423,32 +1472,6 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
             # Stop if we've reached the limit
             if context_tokens >= MAX_CONTEXT_TOKENS:
                 break
-        
-        # Fallback: Add chunk texts for documents not found locally (if we have room)
-        seen_chunk_hashes = set()  # For content deduplication
-        for parent_id, chunk_data in chunk_texts.items():
-            if parent_id not in used_parent_ids and context_tokens < MAX_CONTEXT_TOKENS:
-                # Check if we already have similar content
-                content_preview = "".join(chunk_data['texts'])[:500]
-                content_hash = hash(content_preview)
-                
-                if content_hash in seen_chunk_hashes:
-                    print(f"⏭️ Skipping duplicate chunk content: {chunk_data['title'][:40]}")
-                    continue
-                
-                seen_chunk_hashes.add(content_hash)
-                print(f"⚠️ Using fallback chunks for: {chunk_data['title']}")
-                chunk_content = f"=== {chunk_data['title']} ===\n"
-                # Join unique chunks
-                unique_texts = list(set(chunk_data['texts']))
-                chunk_content += "\n".join(unique_texts[:3]) + "\n\n"  # Limit to 3 chunks
-                
-                chunk_tokens = estimate_tokens(chunk_content)
-                if context_tokens + chunk_tokens <= MAX_CONTEXT_TOKENS:
-                    context += chunk_content
-                    context_tokens += chunk_tokens
-                else:
-                    truncated = True
         
         # Add Memory Context (if we have room)
         if memory_contexts and context_tokens < MAX_CONTEXT_TOKENS:
