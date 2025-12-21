@@ -29,11 +29,7 @@ COPY . .
 # Create directories
 RUN mkdir -p /app/data /app/uploads /app/doc_images
 
-# Copy and make start script executable
-COPY start.sh .
-RUN chmod +x start.sh
-
 EXPOSE 8080
 
-# Use start script
-CMD ["./start.sh"]
+# Hardcoded port 8080
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8080"]
