@@ -46,6 +46,7 @@ reportlab
 # Use older version that doesn't require inference module
 opencv-python-headless>=4.8.0
 pi_heif>=0.13.0
+pandas>=2.0.0
 unstructured==0.10.30
 
 # File type support
