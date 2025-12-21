@@ -672,7 +672,6 @@ def parse_with_unstructured(content, content_type: str = "html", source_url: str
     Each chunk has: {"text": str, "element_type": str, "metadata": dict}
     """
     if not UNSTRUCTURED_AVAILABLE:
-        # Fallback to basic parsing
         if isinstance(content, str):
             chunks, chunk_type = smart_chunk_text(content)
             return [{"text": c, "element_type": "NarrativeText", "metadata": {}} for c in chunks], chunk_type
@@ -681,7 +680,6 @@ def parse_with_unstructured(content, content_type: str = "html", source_url: str
     try:
         elements = []
         
-        # Parse based on content type
         if content_type == "html":
             if isinstance(content, str):
                 elements = partition_html(text=content)
@@ -701,7 +699,6 @@ def parse_with_unstructured(content, content_type: str = "html", source_url: str
             else:
                 elements = partition_text(filename=content)
         else:
-            # Fallback for unknown types
             if isinstance(content, str):
                 chunks, chunk_type = smart_chunk_text(content)
                 return [{"text": c, "element_type": "NarrativeText", "metadata": {}} for c in chunks], chunk_type
@@ -710,7 +707,6 @@ def parse_with_unstructured(content, content_type: str = "html", source_url: str
             return [], "unstructured"
         
         # Use chunk_by_title for structure-aware chunking
-        # This keeps tables together and respects document hierarchy
         chunked_elements = chunk_by_title(
             elements,
             max_characters=1500,
@@ -718,23 +714,17 @@ def parse_with_unstructured(content, content_type: str = "html", source_url: str
             new_after_n_chars=1200
         )
         
-        # Convert to our format with metadata
         chunks_with_metadata = []
         for i, chunk in enumerate(chunked_elements):
-            # Get element type (Table, NarrativeText, Title, ListItem, etc.)
             element_type = type(chunk).__name__
-            
-            # Get text content
             text = str(chunk)
             
-            # Build metadata
             chunk_metadata = {
                 "element_type": element_type,
                 "chunk_index": i,
-                "has_table": element_type == "Table" or "Table" in str(type(chunk.metadata)) if hasattr(chunk, 'metadata') else False,
+                "has_table": element_type == "Table",
             }
             
-            # Add page number if available (for PDFs)
             if hasattr(chunk, 'metadata') and hasattr(chunk.metadata, 'page_number'):
                 chunk_metadata["page_number"] = chunk.metadata.page_number
             
@@ -746,7 +736,6 @@ def parse_with_unstructured(content, content_type: str = "html", source_url: str
         
         print(f"📦 Unstructured created {len(chunks_with_metadata)} chunks")
         
-        # Log element type distribution
         type_counts = {}
         for c in chunks_with_metadata:
             et = c["element_type"]
@@ -768,7 +757,6 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
     Returns: (full_text, chunks_with_metadata, chunker_type)
     """
     if not UNSTRUCTURED_AVAILABLE:
-        # Fallback to BeautifulSoup
         soup = BeautifulSoup(html_content, 'html.parser')
         for element in soup(['script', 'style', 'nav', 'footer', 'header']):
             element.decompose()
@@ -780,19 +768,16 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
         return full_text, chunks_with_meta, chunk_type
     
     try:
-        # Parse HTML with Unstructured
         elements = partition_html(text=html_content)
         
         if not elements:
             return "", [], "unstructured"
         
-        # Build full text from elements (preserving tables as structured text)
         full_text_parts = []
         for el in elements:
             el_type = type(el).__name__
             el_text = str(el)
             
-            # For tables, add markers to keep them identifiable
             if el_type == "Table":
                 full_text_parts.append(f"\n[TABLE]\n{el_text}\n[/TABLE]\n")
             else:
@@ -800,7 +785,6 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
         
         full_text = "\n\n".join(full_text_parts)
         
-        # Chunk using title-aware chunking
         chunked_elements = chunk_by_title(
             elements,
             max_characters=1500,
@@ -816,10 +800,7 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
             chunks_with_metadata.append({
                 "text": text,
                 "element_type": element_type,
-                "metadata": {
-                    "chunk_index": i,
-                    "source_url": url
-                }
+                "metadata": {"chunk_index": i, "source_url": url}
             })
         
         print(f"✅ Unstructured HTML: {len(elements)} elements → {len(chunks_with_metadata)} chunks")
@@ -828,7 +809,6 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
         
     except Exception as e:
         print(f"⚠️ Unstructured HTML parsing failed: {e}")
-        # Fallback
         soup = BeautifulSoup(html_content, 'html.parser')
         for element in soup(['script', 'style', 'nav', 'footer', 'header']):
             element.decompose()
@@ -1558,11 +1538,9 @@ def ingest_with_unstructured(chunks_with_metadata: List[dict], full_text: str, s
     try:
         parent_id = f"parent_{uuid.uuid4().hex[:12]}"
         
-        # Step 1: Extract
         tracker.start_step("extract")
         domain_name = extract_domain_name(source) if doc_type == "website" else ""
         
-        # Count element types for visibility
         element_type_counts = {}
         for c in chunks_with_metadata:
             et = c.get("element_type", "Unknown")
@@ -1575,7 +1553,6 @@ def ingest_with_unstructured(chunks_with_metadata: List[dict], full_text: str, s
             element_types=element_type_counts
         )
         
-        # Save full document with element type info
         doc_metadata = {
             "source": source,
             "type": doc_type,
@@ -1588,7 +1565,6 @@ def ingest_with_unstructured(chunks_with_metadata: List[dict], full_text: str, s
         }
         save_full_document(parent_id, full_text, doc_metadata, images=images)
         
-        # Step 2: Chunking (already done by Unstructured)
         tracker.start_step("chunk")
         tracker.complete_step("chunk", 
             chunks_count=len(chunks_with_metadata), 
@@ -1597,15 +1573,13 @@ def ingest_with_unstructured(chunks_with_metadata: List[dict], full_text: str, s
             avg_chunk_size=round(len(full_text) / len(chunks_with_metadata)) if chunks_with_metadata else 0
         )
         
-        # Emoji based on chunker type
         chunker_emoji = "🔧" if chunker_type == "unstructured" else ("🧠" if chunker_type == "semantic" else "📏")
         print(f"📦 Created {len(chunks_with_metadata)} chunks using {chunker_emoji} {chunker_type} chunker")
         print(f"📊 Element types: {element_type_counts}")
         
-        # Step 3: Embedding
         tracker.start_step("embed")
         metadata_list = []
-        plain_chunks = []  # For BM25
+        plain_chunks = []
         total_embed_cost = 0
         total_tokens = 0
         
@@ -1630,16 +1604,14 @@ def ingest_with_unstructured(chunks_with_metadata: List[dict], full_text: str, s
                 "parent_id": parent_id,
                 "chunk_index": i,
                 "chunk_type": chunker_type,
-                "element_type": element_type,  # NEW: Table, NarrativeText, Title, ListItem, etc.
+                "element_type": element_type,
                 "domain": domain_name,
                 "has_table": element_type == "Table" or chunk_extra_meta.get("has_table", False)
             }
             
-            # Add page number if available
             if "page_number" in chunk_extra_meta:
                 chunk_metadata["page_number"] = chunk_extra_meta["page_number"]
             
-            # Calculate embedding cost
             embed_calc = CostTracker.calculate_embedding_cost(chunk_text)
             total_embed_cost += embed_calc["cost"]
             total_tokens += embed_calc["tokens"]
@@ -1659,7 +1631,6 @@ def ingest_with_unstructured(chunks_with_metadata: List[dict], full_text: str, s
             metadata_list.append(chunk_metadata)
             plain_chunks.append(chunk_text)
         
-        # Log embedding cost
         CostTracker.log_cost(
             service="openai",
             model="text-embedding-3-large",
@@ -1675,12 +1646,10 @@ def ingest_with_unstructured(chunks_with_metadata: List[dict], full_text: str, s
         
         tracker.complete_step("store_vectors", vectors_stored=len(plain_chunks), index="pinecone")
         
-        # Step 4: Store BM25
         tracker.start_step("store_bm25")
         add_to_bm25_index(plain_chunks, metadata_list)
         tracker.complete_step("store_bm25", entries_added=len(plain_chunks))
         
-        # Finish tracking
         tracker.finish(
             total_chunks=len(plain_chunks),
             chunker_type=chunker_type,
@@ -1793,7 +1762,6 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
     parent_id = f"parent_{uuid.uuid4().hex[:12]}"
     domain_name = extract_domain_name(source) if doc_type == "website" else ""
     
-    # Count element types
     element_type_counts = {}
     for c in chunks_with_metadata:
         et = c.get("element_type", "Unknown")
@@ -1813,8 +1781,6 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
     }, images=images)
     
     total_chunks = len(chunks_with_metadata)
-    
-    # Show element types in progress
     element_summary = ", ".join([f"{v} {k}" for k, v in element_type_counts.items()])
     img_count = len(images) if images else 0
     yield progress_event("chunking", 50, f"🔧 Unstructured created {total_chunks} chunks ({element_summary})", 
@@ -1830,7 +1796,6 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
         if not chunk_text.strip():
             continue
         
-        # Calculate progress (50% to 95% for embeddings)
         embed_progress = 50 + int((i / total_chunks) * 45)
         yield progress_event("embedding", embed_progress, f"Embedding chunk {i+1}/{total_chunks} [{element_type}]...")
         
@@ -1847,7 +1812,7 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
             "parent_id": parent_id,
             "chunk_index": i,
             "chunk_type": chunker_type,
-            "element_type": element_type,  # NEW: Table, NarrativeText, Title, etc.
+            "element_type": element_type,
             "domain": domain_name,
             "has_table": element_type == "Table"
         }
@@ -1865,7 +1830,6 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
     yield progress_event("bm25", 97, "Adding to BM25 index...")
     add_to_bm25_index(plain_chunks, metadata_list)
     
-    # Include element types in done message
     yield done_event(
         f"✅ Ingested with {len(plain_chunks)} chunks 🔧 ({element_summary})", 
         len(plain_chunks), 
@@ -1905,16 +1869,9 @@ async def scrape_website_stream(url: str):
                     yield error_event("No content found on page")
                     return
                 
-                # Count element types
-                element_type_counts = {}
-                for c in chunks_with_metadata:
-                    et = c.get("element_type", "Unknown")
-                    element_type_counts[et] = element_type_counts.get(et, 0) + 1
-                
                 yield progress_event("metadata", 35, "Extracting metadata...")
                 metadata = extract_metadata(full_text[:3000], "website")
                 
-                # Use streaming progress with Unstructured chunks
                 for event in ingest_with_progress_unstructured(chunks_with_metadata, full_text, url, "website", "", metadata, chunker_type, images=images):
                     yield event
             else:
@@ -2157,7 +2114,6 @@ def debug_chunks(doc_id: str = None, source_url: str = None, limit: int = 50):
     }
     
     try:
-        # Query Pinecone for chunks
         dummy_vector = embeddings.embed_query("test")
         
         filter_dict = {}
@@ -2174,15 +2130,14 @@ def debug_chunks(doc_id: str = None, source_url: str = None, limit: int = 50):
         for match in pinecone_results['matches']:
             meta = match['metadata']
             
-            # Filter by source URL if specified
             if source_url and source_url not in meta.get('source', ''):
                 continue
             
             chunk_info = {
                 "id": match['id'],
                 "chunk_index": meta.get('chunk_index', 0),
-                "element_type": meta.get('element_type', 'Unknown'),  # NEW: from Unstructured
-                "chunk_type": meta.get('chunk_type', 'Unknown'),  # semantic/unstructured/fallback
+                "element_type": meta.get('element_type', 'Unknown'),
+                "chunk_type": meta.get('chunk_type', 'Unknown'),
                 "has_table": meta.get('has_table', False),
                 "source": meta.get('source', 'N/A')[:80],
                 "title": meta.get('title', 'N/A'),
@@ -2193,51 +2148,16 @@ def debug_chunks(doc_id: str = None, source_url: str = None, limit: int = 50):
             
             results["chunks"].append(chunk_info)
             
-            # Count element types
             et = chunk_info["element_type"]
             results["element_type_summary"][et] = results["element_type_summary"].get(et, 0) + 1
             
-            # Count chunker types
             ct = chunk_info["chunk_type"]
             results["chunker_type_summary"][ct] = results["chunker_type_summary"].get(ct, 0) + 1
         
-        # Sort by chunk_index
         results["chunks"].sort(key=lambda x: x.get('chunk_index', 0))
         results["total_found"] = len(results["chunks"])
         
         return results
-        
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/debug-document/{doc_id}")
-def debug_document(doc_id: str):
-    """Debug endpoint to see full document details including chunking info"""
-    
-    try:
-        doc = load_full_document(doc_id)
-        
-        if not doc:
-            return {"error": "Document not found"}
-        
-        # Get chunks for this document
-        chunks_response = debug_chunks(doc_id=doc_id, limit=100)
-        
-        return {
-            "document": {
-                "id": doc.get("id", doc_id),
-                "metadata": doc.get("metadata", {}),
-                "content_preview": doc.get("content", "")[:500] + "..." if len(doc.get("content", "")) > 500 else doc.get("content", ""),
-                "content_length": len(doc.get("content", "")),
-                "images_count": len(doc.get("images", []))
-            },
-            "chunking": {
-                "total_chunks": chunks_response.get("total_found", 0),
-                "element_type_summary": chunks_response.get("element_type_summary", {}),
-                "chunker_type_summary": chunks_response.get("chunker_type_summary", {}),
-            },
-            "chunks": chunks_response.get("chunks", [])[:10]  # First 10 chunks only
-        }
         
     except Exception as e:
         return {"error": str(e)}
@@ -2252,6 +2172,8 @@ def unstructured_status():
             "html_tables": UNSTRUCTURED_AVAILABLE,
             "pdf_structure": UNSTRUCTURED_AVAILABLE,
             "docx_structure": UNSTRUCTURED_AVAILABLE,
+            "xlsx_structure": UNSTRUCTURED_AVAILABLE,
+            "pptx_structure": UNSTRUCTURED_AVAILABLE,
             "smart_chunking": UNSTRUCTURED_AVAILABLE
         }
     }
@@ -2594,12 +2516,27 @@ async def upload_file(file: UploadFile = File(...)):
             tmp.write(content)
             tmp_path = tmp.name
         
+        # ==================== PDF ====================
         if suffix == ".pdf":
-            # Generate doc_id for images
             doc_id = f"pdf_{uuid.uuid4().hex[:8]}"
-            
-            # Extract images from PDF
             images = extract_images_from_pdf(tmp_path, doc_id)
+            
+            if UNSTRUCTURED_AVAILABLE:
+                print(f"🔧 Using Unstructured.io for PDF: {file.filename}")
+                try:
+                    chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "pdf")
+                    if chunks_with_metadata:
+                        full_text = "\n\n".join([c["text"] for c in chunks_with_metadata])
+                        metadata = extract_metadata(full_text[:3000], "document")
+                        num_chunks, chunker_type, element_types = ingest_with_unstructured(
+                            chunks_with_metadata, full_text, file.filename, "document", 
+                            file_path, metadata, chunker_type=chunker_type, images=images
+                        )
+                        element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
+                        os.unlink(tmp_path)
+                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔧 ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                except Exception as e:
+                    print(f"⚠️ Unstructured PDF failed: {e}, using fallback")
             
             loader = PyPDFLoader(tmp_path)
             documents = loader.load()
@@ -2610,6 +2547,7 @@ async def upload_file(file: UploadFile = File(...)):
             os.unlink(tmp_path)
             return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
+        # ==================== TXT ====================
         elif suffix == ".txt":
             loader = TextLoader(tmp_path)
             documents = loader.load()
@@ -2620,15 +2558,29 @@ async def upload_file(file: UploadFile = File(...)):
             os.unlink(tmp_path)
             return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
+        # ==================== DOCX ====================
         elif suffix == ".docx":
-            from docx import Document as DocxDocument
-            
-            # Generate doc_id for images
             doc_id = f"docx_{uuid.uuid4().hex[:8]}"
-            
-            # Extract images from DOCX
             images = extract_images_from_docx(tmp_path, doc_id)
             
+            if UNSTRUCTURED_AVAILABLE:
+                print(f"🔧 Using Unstructured.io for DOCX: {file.filename}")
+                try:
+                    chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "docx")
+                    if chunks_with_metadata:
+                        full_text = "\n\n".join([c["text"] for c in chunks_with_metadata])
+                        metadata = extract_metadata(full_text[:3000], "document")
+                        num_chunks, chunker_type, element_types = ingest_with_unstructured(
+                            chunks_with_metadata, full_text, file.filename, "document", 
+                            file_path, metadata, chunker_type=chunker_type, images=images
+                        )
+                        element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
+                        os.unlink(tmp_path)
+                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔧 ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                except Exception as e:
+                    print(f"⚠️ Unstructured DOCX failed: {e}, using fallback")
+            
+            from docx import Document as DocxDocument
             doc = DocxDocument(tmp_path)
             full_text = "\n".join([para.text for para in doc.paragraphs if para.text])
             metadata = extract_metadata(full_text, "document")
@@ -2637,7 +2589,25 @@ async def upload_file(file: UploadFile = File(...)):
             os.unlink(tmp_path)
             return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
+        # ==================== XLSX ====================
         elif suffix in [".xlsx", ".xls"]:
+            if UNSTRUCTURED_AVAILABLE:
+                print(f"🔧 Using Unstructured.io for Excel: {file.filename}")
+                try:
+                    chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "xlsx")
+                    if chunks_with_metadata:
+                        full_text = "\n\n".join([c["text"] for c in chunks_with_metadata])
+                        metadata = extract_metadata(full_text[:3000], "spreadsheet")
+                        num_chunks, chunker_type, element_types = ingest_with_unstructured(
+                            chunks_with_metadata, full_text, file.filename, "spreadsheet", 
+                            file_path, metadata, chunker_type=chunker_type
+                        )
+                        element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
+                        os.unlink(tmp_path)
+                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔧 ({element_summary})", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                except Exception as e:
+                    print(f"⚠️ Unstructured Excel failed: {e}, using fallback")
+            
             from openpyxl import load_workbook
             wb = load_workbook(tmp_path)
             full_text = ""
@@ -2654,15 +2624,29 @@ async def upload_file(file: UploadFile = File(...)):
             os.unlink(tmp_path)
             return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
+        # ==================== PPTX ====================
         elif suffix == ".pptx":
-            from pptx import Presentation
-            
-            # Generate doc_id for images
             doc_id = f"pptx_{uuid.uuid4().hex[:8]}"
-            
-            # Extract images from PPTX
             images = extract_images_from_pptx(tmp_path, doc_id)
             
+            if UNSTRUCTURED_AVAILABLE:
+                print(f"🔧 Using Unstructured.io for PPTX: {file.filename}")
+                try:
+                    chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "pptx")
+                    if chunks_with_metadata:
+                        full_text = "\n\n".join([c["text"] for c in chunks_with_metadata])
+                        metadata = extract_metadata(full_text[:3000], "presentation")
+                        num_chunks, chunker_type, element_types = ingest_with_unstructured(
+                            chunks_with_metadata, full_text, file.filename, "presentation", 
+                            file_path, metadata, chunker_type=chunker_type, images=images
+                        )
+                        element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
+                        os.unlink(tmp_path)
+                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔧 ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                except Exception as e:
+                    print(f"⚠️ Unstructured PPTX failed: {e}, using fallback")
+            
+            from pptx import Presentation
             prs = Presentation(tmp_path)
             full_text = ""
             for slide_num, slide in enumerate(prs.slides, 1):
@@ -2676,23 +2660,18 @@ async def upload_file(file: UploadFile = File(...)):
             os.unlink(tmp_path)
             return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
+        # ==================== Audio/Video ====================
         elif suffix in [".mp4", ".mp3", ".wav", ".m4a", ".webm", ".avi", ".mov"]:
-            # Check file size (Whisper API limit is 25MB)
             file_size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
             if file_size_mb > 25:
                 os.unlink(tmp_path)
                 os.remove(file_path)
                 return IngestResponse(success=False, message=f"❌ File too large ({file_size_mb:.1f}MB). Maximum size is 25MB for audio/video transcription.")
             
-            # Use OpenAI Whisper API for transcription
             from openai import OpenAI
             client = OpenAI()
-            
             with open(tmp_path, "rb") as audio_file:
-                transcription = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file
-                )
+                transcription = client.audio.transcriptions.create(model="whisper-1", file=audio_file)
             
             full_text = transcription.text
             metadata = extract_metadata(full_text, "video")
@@ -2701,6 +2680,7 @@ async def upload_file(file: UploadFile = File(...)):
             os.unlink(tmp_path)
             return IngestResponse(success=True, message=f"✅ Transcribed {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
+        # ==================== Images (Enhanced Prompt) ====================
         elif suffix in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
             import base64
             from langchain_core.messages import HumanMessage
@@ -2711,9 +2691,39 @@ async def upload_file(file: UploadFile = File(...)):
             media_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp"}
             media_type = media_types.get(suffix, "image/jpeg")
             
+            # Enhanced prompt for better table and form extraction
+            extraction_prompt = """Extract ALL content from this image carefully.
+
+IMPORTANT RULES:
+1. If there are TABLES in the image:
+   - Preserve table structure using | (pipe) separators
+   - Format each row as: Column1 | Column2 | Column3
+   - Put each row on a new line
+   - Include headers if visible
+
+2. If there are FORMS or INVOICES:
+   - Extract field labels and their values
+   - Format as: Label: Value
+   - Preserve any numbers, dates, amounts exactly
+
+3. For Arabic or mixed language text:
+   - Extract text in its original language
+   - Maintain the reading order
+
+4. For handwritten text:
+   - Do your best to transcribe accurately
+   - Mark unclear parts with [unclear]
+
+Example table format:
+Product | Quantity | Price
+Item A | 10 | $50.00
+Item B | 5 | $25.00
+
+Extract all text and data from the image:"""
+            
             message = HumanMessage(
                 content=[
-                    {"type": "text", "text": "Extract ALL text from this image. Return only the extracted text."},
+                    {"type": "text", "text": extraction_prompt},
                     {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{image_data}"}},
                 ],
             )
@@ -2744,14 +2754,14 @@ def scrape_website(request: UrlRequest):
         
         html_content = response.text
         
-        # Extract images BEFORE parsing (keep existing function)
+        # Extract images BEFORE parsing
         images = extract_images_from_page(url, html_content)
         print(f"🖼️ Extracted {len(images)} images from {url}")
         
         from urllib.parse import urlparse
         domain = urlparse(url).netloc
         
-        # Use Unstructured.io for smart parsing (handles tables correctly!)
+        # Use Unstructured.io for smart parsing
         if UNSTRUCTURED_AVAILABLE:
             print(f"🔧 Using Unstructured.io for {url}")
             full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, url)
@@ -2761,25 +2771,22 @@ def scrape_website(request: UrlRequest):
             
             metadata = extract_metadata(full_text[:3000], "website")
             
-            # Use new ingestion function with element types
             num_chunks, chunker_type, element_types = ingest_with_unstructured(
                 chunks_with_metadata, full_text, url, "website", "", metadata, 
                 chunker_type=chunker_type, images=images
             )
             
-            # Build element types summary for message
             element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
-            chunker_emoji = "🔧"  # Unstructured emoji
             
             return IngestResponse(
                 success=True, 
-                message=f"✅ Scraped {domain} with {num_chunks} chunks {chunker_emoji} ({element_summary}), {len(images)} images", 
+                message=f"✅ Scraped {domain} with {num_chunks} chunks 🔧 ({element_summary}), {len(images)} images", 
                 chunks=num_chunks, 
                 chunker_type=chunker_type,
                 element_types=element_types
             )
         else:
-            # Fallback to old BeautifulSoup method
+            # Fallback to BeautifulSoup
             print(f"⚠️ Unstructured not available, using BeautifulSoup for {url}")
             soup = BeautifulSoup(html_content, 'html.parser')
             for element in soup(['script', 'style', 'nav', 'footer', 'header']):
