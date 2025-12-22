@@ -1405,6 +1405,85 @@
                 display: none;
             }
         }
+
+        /* ========== Enhanced Progress Animations ========== */
+        
+        /* Spinner Animation */
+        .progress-spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 217, 255, 0.2);
+            border-top-color: #00d9ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Animated Progress Bar */
+        .progress-bar-animated {
+            background: linear-gradient(90deg, #00d9ff, #00ff88, #00d9ff);
+            background-size: 200% 100%;
+            animation: progressGradient 2s ease infinite;
+            transition: width 0.5s ease;
+        }
+        
+        @keyframes progressGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        /* Shimmer Effect */
+        .progress-shimmer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                90deg,
+                transparent 0%,
+                rgba(255,255,255,0.3) 50%,
+                transparent 100%
+            );
+            animation: shimmer 1.5s infinite;
+            border-radius: 10px;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        /* Pulse Animation for Active State */
+        .progress-pulse {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        /* ETA Countdown Animation */
+        .eta-countdown {
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            color: #00ff88;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+        
+        /* Step Icons Animation */
+        .step-icon-active {
+            animation: bounceIcon 0.6s ease infinite;
+        }
+        
+        @keyframes bounceIcon {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
     </style>
 </head>
 <body>
@@ -1573,14 +1652,49 @@
                         
                         <div class="status" id="website-status"></div>
                         
-                        <!-- Progress Bar -->
-                        <div id="website-progress-container" style="display: none; margin-top: 10px;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                                <span id="website-progress-text" style="font-size: 12px; color: #00d9ff;">Starting...</span>
-                                <span id="website-progress-percent" style="font-size: 12px; color: #00ff88;">0%</span>
+                        <!-- Enhanced Progress Container -->
+                        <div id="website-progress-container" style="display: none; margin-top: 12px; background: rgba(0,0,0,0.3); border-radius: 12px; padding: 15px; border: 1px solid rgba(0,217,255,0.2);">
+                            
+                            <!-- Header with Spinner and ETA -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div id="website-spinner" class="progress-spinner"></div>
+                                    <span id="website-progress-step" style="font-size: 13px; font-weight: 600; color: #fff;">Initializing...</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div id="website-eta" style="font-size: 12px; color: #00ff88; font-weight: 600;">⏱️ Calculating...</div>
+                                    <div id="website-progress-percent" style="font-size: 11px; color: #888;">0%</div>
+                                </div>
                             </div>
-                            <div style="background: rgba(255,255,255,0.1); border-radius: 10px; height: 8px; overflow: hidden;">
-                                <div id="website-progress-bar" style="background: linear-gradient(90deg, #00d9ff, #00ff88); height: 100%; width: 0%; transition: width 0.3s ease; border-radius: 10px;"></div>
+                            
+                            <!-- Progress Bar with Animation -->
+                            <div style="background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; overflow: hidden; position: relative;">
+                                <div id="website-progress-bar" class="progress-bar-animated" style="height: 100%; width: 0%; border-radius: 10px;"></div>
+                                <div id="website-progress-shimmer" class="progress-shimmer"></div>
+                            </div>
+                            
+                            <!-- Current Action Detail -->
+                            <div style="margin-top: 10px; padding: 8px 10px; background: rgba(0,217,255,0.1); border-radius: 8px; border-left: 3px solid #00d9ff;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span id="website-action-icon" style="font-size: 14px;">🌐</span>
+                                    <span id="website-progress-text" style="font-size: 11px; color: #ccc; word-break: break-all;">Starting...</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Stats Row -->
+                            <div id="website-stats-row" style="display: none; margin-top: 10px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                                <div style="text-align: center; padding: 6px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                                    <div id="website-pages-done" style="font-size: 16px; font-weight: bold; color: #00ff88;">0</div>
+                                    <div style="font-size: 9px; color: #888;">Pages</div>
+                                </div>
+                                <div style="text-align: center; padding: 6px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                                    <div id="website-chunks-count" style="font-size: 16px; font-weight: bold; color: #00d9ff;">0</div>
+                                    <div style="font-size: 9px; color: #888;">Chunks</div>
+                                </div>
+                                <div style="text-align: center; padding: 6px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                                    <div id="website-time-elapsed" style="font-size: 16px; font-weight: bold; color: #feca57;">0s</div>
+                                    <div style="font-size: 9px; color: #888;">Elapsed</div>
+                                </div>
                             </div>
                         </div>
                         
