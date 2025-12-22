@@ -3072,20 +3072,27 @@ HOW TO BEHAVE:
 1. THINK about what information you need to answer the question
 2. USE tools to find the information - you can search multiple times with different queries
 3. EVALUATE the results - if you didn't find what you need, try a different search
-4. ANSWER based on what you found, or honestly say if information is not available
+4. ANSWER based ONLY on what you found in the tool results
 
-IMPORTANT RULES:
+CRITICAL RULES:
+- **ALWAYS USE THE ACTUAL DATA** from tool results in your answers
+- If tool results contain specific numbers, prices, specs - USE THEM EXACTLY
+- Quote specific values: "$6.86/month", "2 vCPUs", "4 GB RAM" etc.
 - Be smart about searching - use different phrasings if first search doesn't work
 - If comparing things, search for each separately
 - If you find partial information, say what you found and what's missing
-- NEVER make up information - only use what you find in the knowledge base
+- NEVER make up information or use your general knowledge - ONLY use data from the search results
 - Be conversational and helpful
-- Use markdown formatting when helpful
+- Use markdown formatting, especially for tables with pricing data
+
+EXAMPLE OF GOOD ANSWER:
+User asks: "What's the price of Azure B2s VM?"
+Tool returns: {"content": "B2ats v2: $6.8620/month pay-as-you-go, $4.5990/month 1-year savings"}
+Good answer: "The Azure B2ats v2 costs **$6.86/month** with pay-as-you-go pricing, or **$4.60/month** with a 1-year savings plan."
 
 WHEN TO SAY "I DON'T HAVE THIS INFORMATION":
 - Only after trying multiple relevant searches
-- Be specific about what you searched for and didn't find
-- Suggest what information might help if the user can provide it"""
+- Be specific about what you searched for and didn't find"""
 
     # Get conversation history
     conv = load_conversation(conversation_id) if conversation_id else None
@@ -3180,7 +3187,7 @@ WHEN TO SAY "I DON'T HAVE THIS INFORMATION":
                             "source": r.get("source", ""),
                             "title": r.get("title", ""),
                             "type": r.get("type", "knowledge_base"),
-                            "relevance": r.get("relevance_score", r.get("score", 0))
+                            "score": r.get("relevance_score", r.get("score", 0))
                         }
                         if source_info not in all_sources:
                             all_sources.append(source_info)
