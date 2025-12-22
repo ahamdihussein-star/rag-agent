@@ -1365,7 +1365,7 @@ def hybrid_search(query: str, top_k: int = 10, source_filter: dict = None, track
             if parent_id:
                 if parent_id not in combined or score > combined[parent_id]['score']:
                     combined[parent_id] = {
-                        'text': metadata.get('text', ''),
+                        'text': metadata.get('content', '') or metadata.get('text', ''),
                         'metadata': metadata,
                         'score': score,
                         'source': 'semantic',
@@ -2184,7 +2184,8 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
         enhanced_text = f"{domain_name} - {chunk_text}" if domain_name else chunk_text
         
         chunk_metadata = {
-            "text": enhanced_text,
+            "content": enhanced_text,
+            "text": enhanced_text,  # Keep both for backward compatibility
             "source": source,
             "type": doc_type,
             "filename": source,
@@ -2945,7 +2946,7 @@ def execute_tool(tool_name: str, arguments: dict) -> dict:
             seen_content = set()
             
             for match in results.matches:
-                content = match.metadata.get("content", "")
+                content = match.metadata.get("content", "") or match.metadata.get("text", "")
                 if content[:100] in seen_content:
                     continue
                 seen_content.add(content[:100])
@@ -3033,8 +3034,9 @@ def execute_tool(tool_name: str, arguments: dict) -> dict:
             for match in results.matches:
                 match_source = match.metadata.get("source", "")
                 if source_name.lower() in match_source.lower():
+                    content = match.metadata.get("content", "") or match.metadata.get("text", "")
                     source_content.append({
-                        "content": match.metadata.get("content", "")[:2000],
+                        "content": content[:2000],
                         "title": match.metadata.get("title", ""),
                         "type": match.metadata.get("type", "")
                     })
@@ -4171,7 +4173,7 @@ def debug_search(query: str, top_k: int = 10):
             results = index.query(vector=query_vector, top_k=top_k, include_metadata=True)
             
             for match in results.matches:
-                content = match.metadata.get("content", "")[:200]
+                content = (match.metadata.get("content", "") or match.metadata.get("text", ""))[:200]
                 if content not in seen_content:
                     seen_content.add(content)
                     all_results.append({
@@ -4213,12 +4215,13 @@ def debug_chunks_by_source(source_contains: str = "", limit: int = 20):
             source = match.metadata.get("source", "").lower()
             title = match.metadata.get("title", "").lower()
             if source_contains.lower() in source or source_contains.lower() in title:
+                content = match.metadata.get("content", "") or match.metadata.get("text", "")
                 filtered.append({
                     "score": round(float(match.score), 4),
                     "source": match.metadata.get("source", ""),
                     "title": match.metadata.get("title", ""),
                     "type": match.metadata.get("type", ""),
-                    "content_preview": match.metadata.get("content", "")[:300]
+                    "content_preview": content[:300]
                 })
         
         return {
