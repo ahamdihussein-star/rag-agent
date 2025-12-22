@@ -2897,7 +2897,7 @@ def chat(request: ChatRequest):
         image_info += "=== END SCREENSHOTS ===\n"
         image_info += "\nIMPORTANT: Copy and paste the SCREENSHOT lines above into your response where relevant!\n"
     
-    prompt = f"""You are a friendly and helpful AI assistant.
+    prompt = f"""You are a friendly and helpful AI assistant with access to a knowledge base.
 
 {conversation_history}
 
@@ -2908,12 +2908,24 @@ Available Information (Documents + Memory):
 User Message: {question}
 
 Instructions:
-- Be friendly and conversational
+- Be friendly, helpful, and conversational
 - If greeting, respond with a friendly greeting
 - Use conversation history to understand context
-- ONLY use information from above - do NOT make up information
-- If no relevant info, say "I don't have specific information about that."
-- Format using markdown (headers, bullet points, bold)
+
+**IMPORTANT - Be Smart About Matching:**
+- Use the information above to answer, but be INTELLIGENT about matching
+- Understand that users may use different names for the same product/service
+- Example: "Database cloud service" likely refers to "Base Database Service"
+- Example: "compute E4" means "Compute - Standard - E4"
+- Use your knowledge to connect user's question to the available information
+- If information seems related but named differently, use it and answer helpfully
+
+**When to say "I don't have information":**
+- ONLY say this if there's truly NO relevant information in the context
+- Do NOT say this just because the exact wording doesn't match
+- Try to find connections and answer helpfully first
+
+- Format using markdown when helpful (headers, bullet points, bold)
 - NEVER mention "documents", "context", "memory" in your response
 - NEVER list sources in text - shown separately
 - Be thorough - include ALL relevant details
@@ -2923,10 +2935,6 @@ Instructions:
 If SCREENSHOTS are listed above, you MUST embed them in your response.
 Simply COPY the exact line like: ![Screenshot 1](/doc-images/xxx.jpeg)
 Place screenshots after the relevant step they illustrate.
-Example response format:
-"1. Go to Settings
-![Screenshot 1](/doc-images/xxx.jpeg)
-2. Click Add..."
 
 Response:"""
     
@@ -4442,7 +4450,7 @@ async def generate_stream(question: str, user_id: str, conversation_id: str):
         image_info += "\nIMPORTANT: Copy and paste the SCREENSHOT lines above into your response where relevant!\n"
     
     # Build prompt
-    prompt = f"""You are a friendly and helpful AI assistant.
+    prompt = f"""You are a friendly and helpful AI assistant with access to a knowledge base.
 
 {conversation_history}
 
@@ -4453,12 +4461,24 @@ Available Information (Documents + Memory):
 User Message: {question}
 
 Instructions:
-- Be friendly and conversational
+- Be friendly, helpful, and conversational
 - If greeting, respond with a friendly greeting
 - Use conversation history to understand context
-- ONLY use information from above - do NOT make up information
-- If no relevant info, say "I don't have specific information about that."
-- Format using markdown (headers, bullet points, bold)
+
+**IMPORTANT - Be Smart About Matching:**
+- Use the information above to answer, but be INTELLIGENT about matching
+- Understand that users may use different names for the same product/service
+- Example: "Database cloud service" likely refers to "Base Database Service"
+- Example: "compute E4" means "Compute - Standard - E4"
+- Use your knowledge to connect user's question to the available information
+- If information seems related but named differently, use it and answer helpfully
+
+**When to say "I don't have information":**
+- ONLY say this if there's truly NO relevant information in the context
+- Do NOT say this just because the exact wording doesn't match
+- Try to find connections and answer helpfully first
+
+- Format using markdown when helpful (headers, bullet points, bold)
 - NEVER mention "documents", "context", "memory" in your response
 - NEVER list sources in text - shown separately
 - Be thorough - include ALL relevant details
@@ -4468,10 +4488,6 @@ Instructions:
 If SCREENSHOTS are listed above, you MUST embed them in your response.
 Simply COPY the exact line like: ![Screenshot 1](/doc-images/xxx.jpeg)
 Place screenshots after the relevant step they illustrate.
-Example response format:
-"1. Go to Settings
-![Screenshot 1](/doc-images/xxx.jpeg)
-2. Click Add..."
 
 Response:"""
     
@@ -4490,7 +4506,7 @@ Response:"""
             doc_context = doc_context[:len(doc_context) - excess_chars] + "\n... [context truncated to fit token limit]"
             
             # Rebuild prompt with truncated context
-            prompt = f"""You are a friendly and helpful AI assistant.
+            prompt = f"""You are a friendly and helpful AI assistant with access to a knowledge base.
 
 {conversation_history}
 
@@ -4501,25 +4517,25 @@ Available Information (Documents + Memory):
 User Message: {question}
 
 Instructions:
-- Be friendly and conversational
+- Be friendly, helpful, and conversational
 - If greeting, respond with a friendly greeting
 - Use conversation history to understand context
-- ONLY use information from above - do NOT make up information
-- If no relevant info, say "I don't have specific information about that."
-- Format using markdown (headers, bullet points, bold)
+
+**IMPORTANT - Be Smart About Matching:**
+- Use the information above to answer, but be INTELLIGENT about matching
+- Understand that users may use different names for the same product/service
+- If information seems related but named differently, use it and answer helpfully
+- ONLY say "I don't have information" if there's truly NO relevant information
+
+- Format using markdown when helpful (headers, bullet points, bold)
 - NEVER mention "documents", "context", "memory" in your response
 - NEVER list sources in text - shown separately
 - Be thorough - include ALL relevant details
-- When asked to list ALL items, include EVERY item found
 
 **SCREENSHOT EMBEDDING RULE**:
 If SCREENSHOTS are listed above, you MUST embed them in your response.
 Simply COPY the exact line like: ![Screenshot 1](/doc-images/xxx.jpeg)
 Place screenshots after the relevant step they illustrate.
-Example response format:
-"1. Go to Settings
-![Screenshot 1](/doc-images/xxx.jpeg)
-2. Click Add..."
 
 Response:"""
             print(f"✅ Prompt reduced to ~{len(prompt) // 4} tokens")
@@ -4529,18 +4545,17 @@ Response:"""
         tracker.start_step("generate")
     
     # Calculate prompt breakdown for token transparency
-    system_prompt = """You are a friendly and helpful AI assistant.
+    system_prompt = """You are a friendly and helpful AI assistant with access to a knowledge base.
 Instructions:
-- Be friendly and conversational
-- If greeting, respond with a friendly greeting
+- Be friendly, helpful, and conversational
 - Use conversation history to understand context
-- ONLY use information from above - do NOT make up information
-- If no relevant info, say "I don't have specific information about that."
-- Format using markdown (headers, bullet points, bold)
+- Be INTELLIGENT about matching - users may use different names for same products
+- Example: "Database cloud service" = "Base Database Service"
+- If information seems related but named differently, use it and answer helpfully
+- ONLY say "I don't have information" if there's truly NO relevant data
+- Format using markdown when helpful
 - NEVER mention "documents", "context", "memory" in your response
-- NEVER list sources in text - shown separately
-- Be thorough - include ALL relevant details
-- When asked to list ALL items, include EVERY item found"""
+- Be thorough - include ALL relevant details"""
     
     prompt_breakdown = CostTracker.calculate_prompt_breakdown(
         system_prompt=system_prompt,
