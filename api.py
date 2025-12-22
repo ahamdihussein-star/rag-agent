@@ -1882,12 +1882,12 @@ def error_event(message: str):
     return f"data: {json.dumps(data)}\n\n"
 
 def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: str, metadata: dict, images: List[dict] = None):
-    """Generator that yields progress updates during ingestion"""
+    """Generator that yields progress updates during ingestion - with BATCH embedding"""
     
     parent_id = f"parent_{uuid.uuid4().hex[:12]}"
     domain_name = extract_domain_name(source) if doc_type == "website" else ""
     
-    yield progress_event("saving_doc", 40, "Saving document...")
+    yield progress_event("saving_doc", 40, "💾 Saving document...")
     
     save_full_document(parent_id, full_text, {
         "source": source,
@@ -1898,22 +1898,23 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
         "domain": domain_name
     }, images=images)
     
-    yield progress_event("chunking", 45, "Creating semantic chunks...")
+    yield progress_event("chunking", 45, "✂️ Creating semantic chunks...")
     
     chunks, chunker_type = smart_chunk_text(full_text)
     total_chunks = len(chunks)
+    
+    if not chunks:
+        yield error_event("No valid chunks to embed")
+        return
     
     # Show chunker type in progress
     chunker_display = "🧠 Semantic Chunker" if chunker_type == "semantic" else "📏 Fallback Splitter"
     img_count = len(images) if images else 0
     yield progress_event("chunking", 50, f"Created {total_chunks} chunks using {chunker_display}", chunker_type=chunker_type)
     
+    # Prepare metadata
     metadata_list = []
     for i, chunk in enumerate(chunks):
-        # Calculate progress (50% to 95% for embeddings)
-        embed_progress = 50 + int((i / total_chunks) * 45)
-        yield progress_event("embedding", embed_progress, f"Embedding chunk {i+1}/{total_chunks}...")
-        
         enhanced_text = f"{domain_name} - {chunk}" if domain_name else chunk
         
         chunk_metadata = {
@@ -1929,17 +1930,46 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
             "chunk_type": chunker_type,
             "domain": domain_name
         }
-        
-        vector = embeddings.embed_query(chunk)
-        index.upsert(vectors=[{
-            "id": f"{parent_id}_chunk_{i}",
-            "values": vector,
-            "metadata": chunk_metadata
-        }])
-        
         metadata_list.append(chunk_metadata)
     
-    yield progress_event("bm25", 97, "Adding to BM25 index...")
+    # BATCH EMBEDDING - much faster!
+    yield progress_event("embedding", 55, f"🧠 Batch embedding {total_chunks} chunks (this is fast!)...")
+    
+    try:
+        print(f"🚀 Starting batch embedding for {total_chunks} chunks...")
+        vectors = embeddings.embed_documents(chunks)
+        print(f"✅ Batch embedding complete: {len(vectors)} vectors")
+        
+        yield progress_event("embedding_done", 75, f"✅ Embedded {len(vectors)} chunks in one batch!")
+        
+    except Exception as e:
+        print(f"❌ Batch embedding failed: {e}")
+        yield error_event(f"Embedding failed: {str(e)}")
+        return
+    
+    # Store vectors in Pinecone (batch upsert)
+    yield progress_event("storing", 80, f"💾 Storing {len(vectors)} vectors in Pinecone...")
+    
+    batch_size = 100
+    vectors_to_upsert = []
+    
+    for i, (vector, meta) in enumerate(zip(vectors, metadata_list)):
+        vectors_to_upsert.append({
+            "id": f"{parent_id}_chunk_{i}",
+            "values": vector,
+            "metadata": meta
+        })
+        
+        if len(vectors_to_upsert) >= batch_size:
+            index.upsert(vectors=vectors_to_upsert)
+            vectors_to_upsert = []
+            progress = 80 + int((i / len(vectors)) * 15)
+            yield progress_event("storing", progress, f"💾 Stored {i+1}/{len(vectors)} vectors...")
+    
+    if vectors_to_upsert:
+        index.upsert(vectors=vectors_to_upsert)
+    
+    yield progress_event("bm25", 97, "📚 Adding to BM25 index...")
     add_to_bm25_index(chunks, metadata_list)
     
     # Include chunker type in done message
@@ -1947,7 +1977,7 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
     yield done_event(f"✅ Ingested with {total_chunks} chunks {chunker_emoji}", total_chunks, chunker_type=chunker_type, images_count=img_count)
 
 def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_text: str, source: str, doc_type: str, file_path: str, metadata: dict, chunker_type: str = "unstructured", images: List[dict] = None):
-    """Generator that yields progress updates during Unstructured ingestion"""
+    """Generator that yields progress updates during Unstructured ingestion - with BATCH embedding"""
     
     parent_id = f"parent_{uuid.uuid4().hex[:12]}"
     domain_name = extract_domain_name(source) if doc_type == "website" else ""
@@ -1957,7 +1987,7 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
         et = c.get("element_type", "Unknown")
         element_type_counts[et] = element_type_counts.get(et, 0) + 1
     
-    yield progress_event("saving_doc", 40, "Saving document...")
+    yield progress_event("saving_doc", 40, "💾 Saving document...")
     
     save_full_document(parent_id, full_text, {
         "source": source,
@@ -1973,11 +2003,15 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
     total_chunks = len(chunks_with_metadata)
     element_summary = ", ".join([f"{v} {k}" for k, v in element_type_counts.items()])
     img_count = len(images) if images else 0
-    yield progress_event("chunking", 50, f"🔧 Unstructured created {total_chunks} chunks ({element_summary})", 
+    yield progress_event("chunking", 45, f"🔧 Unstructured created {total_chunks} chunks ({element_summary})", 
                         chunker_type=chunker_type, element_types=element_type_counts)
+    
+    # Prepare all chunks first
+    yield progress_event("preparing", 50, f"📝 Preparing {total_chunks} chunks for embedding...")
     
     metadata_list = []
     plain_chunks = []
+    chunk_indices = []
     
     for i, chunk_data in enumerate(chunks_with_metadata):
         chunk_text = chunk_data.get("text", "")
@@ -1985,9 +2019,6 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
         
         if not chunk_text.strip():
             continue
-        
-        embed_progress = 50 + int((i / total_chunks) * 45)
-        yield progress_event("embedding", embed_progress, f"Embedding chunk {i+1}/{total_chunks} [{element_type}]...")
         
         enhanced_text = f"{domain_name} - {chunk_text}" if domain_name else chunk_text
         
@@ -2007,18 +2038,60 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
             "has_table": element_type == "Table"
         }
         
-        vector = embeddings.embed_query(chunk_text)
-        index.upsert(vectors=[{
-            "id": f"{parent_id}_chunk_{i}",
-            "values": vector,
-            "metadata": chunk_metadata
-        }])
-        
         metadata_list.append(chunk_metadata)
         plain_chunks.append(chunk_text)
+        chunk_indices.append(i)
     
-    yield progress_event("bm25", 97, "Adding to BM25 index...")
+    if not plain_chunks:
+        yield error_event("No valid chunks to embed")
+        return
+    
+    # BATCH EMBEDDING - much faster!
+    yield progress_event("embedding", 55, f"🧠 Batch embedding {len(plain_chunks)} chunks (this is fast!)...")
+    
+    try:
+        # Use embed_documents for batch embedding (single API call!)
+        print(f"🚀 Starting batch embedding for {len(plain_chunks)} chunks...")
+        vectors = embeddings.embed_documents(plain_chunks)
+        print(f"✅ Batch embedding complete: {len(vectors)} vectors")
+        
+        yield progress_event("embedding_done", 75, f"✅ Embedded {len(vectors)} chunks in one batch!")
+        
+    except Exception as e:
+        print(f"❌ Batch embedding failed: {e}")
+        yield error_event(f"Embedding failed: {str(e)}")
+        return
+    
+    # Store vectors in Pinecone
+    yield progress_event("storing", 80, f"💾 Storing {len(vectors)} vectors in Pinecone...")
+    
+    # Batch upsert to Pinecone (in batches of 100)
+    batch_size = 100
+    vectors_to_upsert = []
+    
+    for i, (vector, meta, chunk_idx) in enumerate(zip(vectors, metadata_list, chunk_indices)):
+        vectors_to_upsert.append({
+            "id": f"{parent_id}_chunk_{chunk_idx}",
+            "values": vector,
+            "metadata": meta
+        })
+        
+        # Upsert in batches
+        if len(vectors_to_upsert) >= batch_size:
+            index.upsert(vectors=vectors_to_upsert)
+            vectors_to_upsert = []
+            progress = 80 + int((i / len(vectors)) * 15)
+            yield progress_event("storing", progress, f"💾 Stored {i+1}/{len(vectors)} vectors...")
+    
+    # Upsert remaining vectors
+    if vectors_to_upsert:
+        index.upsert(vectors=vectors_to_upsert)
+    
+    yield progress_event("bm25", 97, "📚 Adding to BM25 index...")
     add_to_bm25_index(plain_chunks, metadata_list)
+    
+    print(f"📦 Created {len(plain_chunks)} chunks using 🔧 {chunker_type} chunker")
+    print(f"📊 Element types: {element_type_counts}")
     
     yield done_event(
         f"✅ Ingested with {len(plain_chunks)} chunks 🔧 ({element_summary})", 
