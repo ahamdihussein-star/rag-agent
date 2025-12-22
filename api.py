@@ -2880,7 +2880,7 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_knowledge_base",
-            "description": "Search the knowledge base for information. Use this when you need to find specific information to answer the user's question. You can call this multiple times with different queries if needed.",
+            "description": "Search the internal knowledge base for information. Use this FIRST for any question. The knowledge base contains curated pricing data, documentation, and specific information the user has added.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -2892,6 +2892,23 @@ AGENT_TOOLS = [
                         "type": "integer",
                         "description": "Number of results to return (default: 10)",
                         "default": 10
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "Search the internet for current information. Use this when: 1) Knowledge base doesn't have the specific info needed, 2) You need to fill gaps in a comparison, 3) You need the most current/updated information. This searches the live internet.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The web search query. Be specific."
                     }
                 },
                 "required": ["query"]
@@ -3056,6 +3073,82 @@ def execute_tool(tool_name: str, arguments: dict) -> dict:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
+    elif tool_name == "search_web":
+        query = arguments.get("query", "")
+        
+        try:
+            # Use requests to call a search API (DuckDuckGo or similar)
+            import requests
+            
+            # Use DuckDuckGo Instant Answer API
+            ddg_url = "https://api.duckduckgo.com/"
+            params = {
+                "q": query,
+                "format": "json",
+                "no_html": 1,
+                "skip_disambig": 1
+            }
+            
+            response = requests.get(ddg_url, params=params, timeout=10)
+            data = response.json()
+            
+            results = []
+            
+            # Get abstract/summary
+            if data.get("Abstract"):
+                results.append({
+                    "content": data["Abstract"],
+                    "source": data.get("AbstractURL", "DuckDuckGo"),
+                    "title": data.get("Heading", query),
+                    "type": "web_search"
+                })
+            
+            # Get related topics
+            for topic in data.get("RelatedTopics", [])[:5]:
+                if isinstance(topic, dict) and topic.get("Text"):
+                    results.append({
+                        "content": topic["Text"],
+                        "source": topic.get("FirstURL", ""),
+                        "title": topic.get("Text", "")[:50],
+                        "type": "web_search"
+                    })
+            
+            # If no results from DDG, use a simple fallback
+            if not results:
+                # Try a more direct search approach
+                search_url = f"https://html.duckduckgo.com/html/?q={query}"
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                search_response = requests.get(search_url, headers=headers, timeout=10)
+                
+                if search_response.status_code == 200:
+                    from bs4 import BeautifulSoup
+                    soup = BeautifulSoup(search_response.text, 'html.parser')
+                    
+                    for result in soup.select('.result')[:5]:
+                        title_elem = result.select_one('.result__title')
+                        snippet_elem = result.select_one('.result__snippet')
+                        link_elem = result.select_one('.result__url')
+                        
+                        if title_elem and snippet_elem:
+                            results.append({
+                                "content": snippet_elem.get_text(strip=True),
+                                "source": link_elem.get_text(strip=True) if link_elem else "",
+                                "title": title_elem.get_text(strip=True),
+                                "type": "web_search"
+                            })
+            
+            return {
+                "success": True,
+                "query": query,
+                "results_count": len(results),
+                "results": results,
+                "source_type": "web"
+            }
+            
+        except Exception as e:
+            print(f"Web search failed: {e}")
+            return {"success": False, "error": str(e), "results": []}
+    
     return {"success": False, "error": f"Unknown tool: {tool_name}"}
 
 
@@ -3066,50 +3159,55 @@ async def run_agent_with_streaming(question: str, user_id: str, conversation_id:
     """
     
     # System prompt for the agent
-    system_prompt = """You are an intelligent AI assistant with access to a knowledge base AND your own extensive knowledge. You combine both to give the best possible answers.
+    system_prompt = """You are an expert AI assistant that combines a curated knowledge base with live web search to give complete, accurate answers.
 
-YOUR CAPABILITIES:
-1. search_knowledge_base: Search for specific, up-to-date information (prices, specs, etc.)
-2. list_available_sources: See what documents/sources exist
-3. get_source_content: Get all content from a specific source
+YOUR TOOLS (use in this order):
+1. search_knowledge_base: ALWAYS try this FIRST - contains curated pricing, specs, documentation
+2. search_web: Use when knowledge base doesn't have the info OR to fill gaps in comparisons
+3. list_available_sources: See what's in the knowledge base
+4. get_source_content: Get full content from a specific source
 
-HOW TO BEHAVE:
-1. SEARCH the knowledge base for specific data (prices, specs, current info)
-2. COMBINE the search results with your general knowledge
-3. PROVIDE intelligent analysis, comparisons, and recommendations
+CRITICAL WORKFLOW FOR COMPARISONS:
+1. Search knowledge base for Provider A → Get specific data
+2. Search knowledge base for Provider B → Get specific data  
+3. If ANY data is missing → Use search_web to find it
+4. NEVER leave blanks or say "not specified" - always find the answer
 
-CRITICAL RULES FOR USING DATA:
-- For SPECIFIC NUMBERS (prices, specs, dates): Use ONLY data from search results - quote them exactly
-- For ANALYSIS, COMPARISONS, EXPLANATIONS: Use your intelligence and general knowledge
-- For RECOMMENDATIONS: Combine search data with your understanding
+RESPONSE QUALITY RULES:
+✅ ALWAYS use markdown tables for pricing comparisons
+✅ ALWAYS fill every cell in the table with actual numbers
+✅ ALWAYS convert units to match (e.g., all monthly OR all hourly)
+✅ ALWAYS add analysis AFTER the table explaining insights
+✅ ALWAYS give a clear recommendation at the end
 
-WHEN COMPARING SERVICES (like Oracle vs Azure):
-1. Search for each provider's pricing data
-2. Use the actual prices found in results
-3. ADD your knowledge to explain:
-   - What use cases each is best for
-   - How the pricing models differ (OCPU vs vCPU, etc.)
-   - Which workloads suit each provider
-   - Real-world considerations
+EXAMPLE OF PERFECT COMPARISON RESPONSE:
 
-EXAMPLE OF A GREAT COMPARISON:
-User: "Compare Oracle and Azure compute"
-You should:
-- Quote actual prices from search: "Oracle E4: 0.091 AED/OCPU/hour, Azure E2bs: $127/month"
-- Explain the difference: "Oracle uses OCPU (2 vCPUs), Azure uses vCPU directly"
-- Give insights: "Oracle's Ampere A1 free tier (3000 OCPU hours/month) is great for dev/test"
-- Recommend: "For burstable workloads, Azure B-series. For consistent compute, Oracle Standard."
+## Pricing Comparison: Oracle vs Azure (2 vCPU, 16GB RAM)
 
-FORMATTING:
-- Use tables for pricing comparisons
-- Use bullet points for features
-- Be conversational but informative
-- Give actionable insights, not just data dumps
+| Provider | Instance | vCPUs | RAM | Monthly Cost | Spot/Discount |
+|----------|----------|-------|-----|--------------|---------------|
+| Oracle   | E4.Flex  | 2     | 16GB | $XX.XX      | Free tier available |
+| Azure    | F2s v2   | 2     | 16GB | $XX.XX      | $XX.XX (spot) |
 
-NEVER:
-- Make up specific prices or numbers - only use what you find
-- Give vague answers when you have specific data
-- Just list data without analysis"""
+### Key Differences:
+- **Pricing Model**: Oracle charges per OCPU (1 OCPU = 2 vCPU), Azure charges per vCPU
+- **Free Tier**: Oracle offers 3000 OCPU hours/month free
+- **Spot Pricing**: Azure offers up to 80% discount for interruptible workloads
+
+### Recommendation:
+For your use case (2 vCPU, 16GB), I recommend **[Provider]** because...
+
+NEVER DO THIS:
+❌ "The exact pricing isn't directly specified" - SEARCH WEB instead
+❌ "Use the pricing calculator" - FIND the actual price
+❌ Empty table cells - FILL with actual data or search more
+❌ Missing provider in comparison - SEARCH until you find it
+
+ALWAYS DO THIS:
+✅ Complete tables with real numbers
+✅ Clear winner recommendation
+✅ Actionable insights
+✅ Convert currencies/units for fair comparison"""
 
     # Get conversation history
     conv = load_conversation(conversation_id) if conversation_id else None

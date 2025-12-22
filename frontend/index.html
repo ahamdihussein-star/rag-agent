@@ -2128,6 +2128,7 @@
             // Tool icons mapping
             const toolIcons = {
                 'search_knowledge_base': '🔍',
+                'search_web': '🌐',
                 'list_available_sources': '📋',
                 'get_source_content': '📄',
                 'generating': '✍️'
@@ -2263,7 +2264,8 @@
         
         function getThinkingText(step, detail) {
             const stepTexts = {
-                'search_knowledge_base': `Searching: "${detail}"`,
+                'search_knowledge_base': `Searching KB: "${detail}"`,
+                'search_web': `Searching Web: "${detail}"`,
                 'list_available_sources': 'Checking available sources...',
                 'get_source_content': `Getting content from: ${detail}`,
                 'generating': 'Writing response...'
