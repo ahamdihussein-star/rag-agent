@@ -22,6 +22,7 @@ import cohere
 import numpy as np
 from typing import List, Optional
 import asyncio
+from openai import OpenAI  # For Agentic RAG with function calling
 
 # Unstructured.io imports for smart document parsing
 try:
@@ -55,6 +56,9 @@ pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 index = pc.Index(os.getenv("PINECONE_INDEX_NAME"))
 embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
 llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
+
+# OpenAI client for Agentic RAG (function calling)
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Initialize Cohere for Reranking
 co = cohere.Client(os.getenv("COHERE_API_KEY"))
@@ -1166,20 +1170,31 @@ def rewrite_query_with_llm(query: str) -> List[str]:
     """
     Use LLM to understand the query and generate search variations.
     This helps match user's natural language to exact product names in the database.
+    Now with better category awareness (compute vs database vs storage).
     """
     try:
-        prompt = f"""You are a search query optimizer for a cloud pricing knowledge base.
+        prompt = f"""You are a search query optimizer for a CLOUD PRICING knowledge base.
+The knowledge base contains pricing for Oracle Cloud (OCI), Microsoft Azure, and AWS.
 
 User's question: "{query}"
 
-Your task: Generate 3-5 search query variations that would match product/service names in a pricing table.
+IMPORTANT - Identify the SERVICE CATEGORY first:
+- COMPUTE: Virtual Machines, VMs, EC2, instances, OCPU, vCPU, compute shapes
+- DATABASE: Database services, RDS, Oracle DB, SQL, MySQL, PostgreSQL
+- STORAGE: Block storage, object storage, S3, blobs
+- NETWORKING: Load balancers, VPN, bandwidth
 
-Rules:
-1. Keep variations SHORT (2-5 words each)
-2. Include variations with dashes (e.g., "Standard - E4")
-3. Include variations without dashes (e.g., "Standard E4")
-4. Include the core product name only (e.g., "E4 OCPU")
-5. Consider Oracle/AWS/Azure naming conventions
+Your task: Generate 3-5 search query variations that would match the CORRECT category.
+
+CRITICAL RULES:
+1. If user asks about "compute", do NOT include database terms
+2. If user asks about "database", do NOT include compute terms
+3. Use the cloud provider's actual naming conventions:
+   - Oracle: "Compute - Standard - E4", "Compute - Standard - E5", "VM.Standard"
+   - Azure: "Virtual Machines", "B-series", "D-series", "F-series"
+   - AWS: "EC2", "t3", "m5", "c5"
+4. Keep variations SHORT (2-5 words each)
+5. Include the cloud provider name if mentioned
 
 Return ONLY a JSON array of strings, nothing else:
 ["variation1", "variation2", "variation3"]"""
@@ -2855,7 +2870,411 @@ def delete_conversation(conversation_id: str):
         return {"success": True, "message": "Conversation deleted"}
     return {"success": False, "message": "Conversation not found"}
 
-# ==================== Chat Endpoint ====================
+# ==================== AGENTIC RAG SYSTEM ====================
+# The LLM decides what to search, evaluates results, and can search multiple times
+
+# Define tools the agent can use
+AGENT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_knowledge_base",
+            "description": "Search the knowledge base for information. Use this when you need to find specific information to answer the user's question. You can call this multiple times with different queries if needed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query. Be specific and use relevant keywords."
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Number of results to return (default: 10)",
+                        "default": 10
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_available_sources",
+            "description": "List all available sources/documents in the knowledge base. Use this to see what information is available before searching.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_source_content",
+            "description": "Get all content from a specific source. Use this when you need comprehensive information from a particular document or website.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_name": {
+                        "type": "string",
+                        "description": "The name or URL of the source to retrieve"
+                    }
+                },
+                "required": ["source_name"]
+            }
+        }
+    }
+]
+
+def execute_tool(tool_name: str, arguments: dict) -> dict:
+    """Execute a tool and return results"""
+    
+    if tool_name == "search_knowledge_base":
+        query = arguments.get("query", "")
+        top_k = arguments.get("top_k", 10)
+        
+        # Use existing search with reranking
+        try:
+            query_vector = embeddings.embed_query(query)
+            results = index.query(vector=query_vector, top_k=top_k * 2, include_metadata=True)
+            
+            # Format results
+            search_results = []
+            seen_content = set()
+            
+            for match in results.matches:
+                content = match.metadata.get("content", "")
+                if content[:100] in seen_content:
+                    continue
+                seen_content.add(content[:100])
+                
+                search_results.append({
+                    "content": content[:1500],  # Limit content size
+                    "source": match.metadata.get("source", "Unknown"),
+                    "title": match.metadata.get("title", ""),
+                    "type": match.metadata.get("type", ""),
+                    "score": float(match.score)
+                })
+            
+            # Rerank with Cohere if available
+            if search_results and co:
+                try:
+                    docs_to_rerank = [r["content"] for r in search_results[:20]]
+                    rerank_results = co.rerank(
+                        model="rerank-v3.5",
+                        query=query,
+                        documents=docs_to_rerank,
+                        top_n=min(top_k, len(docs_to_rerank))
+                    )
+                    
+                    reranked = []
+                    for r in rerank_results.results:
+                        result = search_results[r.index]
+                        result["relevance_score"] = float(r.relevance_score)
+                        reranked.append(result)
+                    search_results = reranked
+                except Exception as e:
+                    print(f"Rerank failed: {e}")
+                    search_results = search_results[:top_k]
+            
+            return {
+                "success": True,
+                "query": query,
+                "results_count": len(search_results),
+                "results": search_results[:top_k]
+            }
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    elif tool_name == "list_available_sources":
+        try:
+            # Get unique sources from recent vectors
+            query_vector = embeddings.embed_query("information data content")
+            results = index.query(vector=query_vector, top_k=100, include_metadata=True)
+            
+            sources = {}
+            for match in results.matches:
+                source = match.metadata.get("source", "Unknown")
+                title = match.metadata.get("title", "")
+                source_type = match.metadata.get("type", "")
+                
+                if source not in sources:
+                    sources[source] = {
+                        "source": source,
+                        "title": title,
+                        "type": source_type,
+                        "chunks_found": 1
+                    }
+                else:
+                    sources[source]["chunks_found"] += 1
+            
+            return {
+                "success": True,
+                "sources_count": len(sources),
+                "sources": list(sources.values())
+            }
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    elif tool_name == "get_source_content":
+        source_name = arguments.get("source_name", "")
+        
+        try:
+            # Search for content from specific source
+            query_vector = embeddings.embed_query(source_name)
+            results = index.query(vector=query_vector, top_k=50, include_metadata=True)
+            
+            # Filter by source
+            source_content = []
+            for match in results.matches:
+                match_source = match.metadata.get("source", "")
+                if source_name.lower() in match_source.lower():
+                    source_content.append({
+                        "content": match.metadata.get("content", "")[:2000],
+                        "title": match.metadata.get("title", ""),
+                        "type": match.metadata.get("type", "")
+                    })
+            
+            return {
+                "success": True,
+                "source": source_name,
+                "chunks_found": len(source_content),
+                "content": source_content[:20]  # Limit to 20 chunks
+            }
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    return {"success": False, "error": f"Unknown tool: {tool_name}"}
+
+
+async def run_agent_with_streaming(question: str, user_id: str, conversation_id: str):
+    """
+    Run the agentic RAG with streaming.
+    The LLM decides what to search, evaluates results, and answers.
+    """
+    
+    # System prompt for the agent
+    system_prompt = """You are an intelligent AI assistant with access to a knowledge base. You have tools to search and retrieve information.
+
+YOUR CAPABILITIES:
+1. search_knowledge_base: Search for specific information
+2. list_available_sources: See what documents/sources exist
+3. get_source_content: Get all content from a specific source
+
+HOW TO BEHAVE:
+1. THINK about what information you need to answer the question
+2. USE tools to find the information - you can search multiple times with different queries
+3. EVALUATE the results - if you didn't find what you need, try a different search
+4. ANSWER based on what you found, or honestly say if information is not available
+
+IMPORTANT RULES:
+- Be smart about searching - use different phrasings if first search doesn't work
+- If comparing things, search for each separately
+- If you find partial information, say what you found and what's missing
+- NEVER make up information - only use what you find in the knowledge base
+- Be conversational and helpful
+- Use markdown formatting when helpful
+
+WHEN TO SAY "I DON'T HAVE THIS INFORMATION":
+- Only after trying multiple relevant searches
+- Be specific about what you searched for and didn't find
+- Suggest what information might help if the user can provide it"""
+
+    # Get conversation history
+    conv = load_conversation(conversation_id) if conversation_id else None
+    messages_history = []
+    
+    if conv and conv.get('messages'):
+        # Add recent conversation for context (last 6 messages)
+        for msg in conv['messages'][-6:]:
+            role = "user" if msg['role'] == 'user' else "assistant"
+            messages_history.append({
+                "role": role,
+                "content": msg['content'][:1500]  # Limit size
+            })
+    
+    # Build messages for the agent
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ] + messages_history + [
+        {"role": "user", "content": question}
+    ]
+    
+    # Track sources found
+    all_sources = []
+    tool_calls_made = []
+    
+    # Agent loop - max 5 iterations
+    max_iterations = 5
+    iteration = 0
+    
+    while iteration < max_iterations:
+        iteration += 1
+        
+        # Call OpenAI with tools
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            tools=AGENT_TOOLS,
+            tool_choice="auto",
+            temperature=0.7
+        )
+        
+        assistant_message = response.choices[0].message
+        
+        # Check if the model wants to use tools
+        if assistant_message.tool_calls:
+            # Add assistant's message with tool calls
+            messages.append({
+                "role": "assistant",
+                "content": assistant_message.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    } for tc in assistant_message.tool_calls
+                ]
+            })
+            
+            # Execute each tool call
+            for tool_call in assistant_message.tool_calls:
+                tool_name = tool_call.function.name
+                try:
+                    arguments = json.loads(tool_call.function.arguments)
+                except:
+                    arguments = {}
+                
+                # Stream thinking
+                thinking_msg = {
+                    "type": "thinking",
+                    "step": tool_name,
+                    "detail": arguments.get("query", str(arguments))
+                }
+                yield f"data: {json.dumps(thinking_msg)}\n\n"
+                
+                # Execute tool
+                result = execute_tool(tool_name, arguments)
+                
+                # Track tool call
+                tool_calls_made.append({
+                    "tool": tool_name,
+                    "arguments": arguments,
+                    "results_count": result.get("results_count", result.get("chunks_found", 0))
+                })
+                
+                # Collect sources
+                if result.get("results"):
+                    for r in result["results"]:
+                        source_info = {
+                            "source": r.get("source", ""),
+                            "title": r.get("title", ""),
+                            "type": r.get("type", "knowledge_base"),
+                            "relevance": r.get("relevance_score", r.get("score", 0))
+                        }
+                        if source_info not in all_sources:
+                            all_sources.append(source_info)
+                
+                # Stream tool result status
+                result_msg = {
+                    "type": "tool_result",
+                    "tool": tool_name,
+                    "found": result.get("results_count", result.get("chunks_found", 0)),
+                    "success": result.get("success", False)
+                }
+                yield f"data: {json.dumps(result_msg)}\n\n"
+                
+                # Add tool result to messages
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(result)[:15000]  # Limit size
+                })
+        
+        else:
+            # No more tool calls - model is ready to answer
+            break
+    
+    # Send sources before final answer
+    sources_msg = {
+        "type": "sources",
+        "data": all_sources[:10],  # Top 10 sources
+        "conversation_id": conversation_id
+    }
+    yield f"data: {json.dumps(sources_msg)}\n\n"
+    
+    # Stream the final answer
+    thinking_msg = {"type": "thinking", "step": "generating", "detail": "Writing answer..."}
+    yield f"data: {json.dumps(thinking_msg)}\n\n"
+    
+    # Get streaming response for final answer
+    stream = openai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=messages,
+        temperature=0.7,
+        stream=True
+    )
+    
+    full_answer = ""
+    for chunk in stream:
+        if chunk.choices[0].delta.content:
+            content = chunk.choices[0].delta.content
+            full_answer += content
+            token_msg = {"type": "token", "content": content}
+            yield f"data: {json.dumps(token_msg)}\n\n"
+    
+    # Save to conversation
+    if conversation_id:
+        add_message_to_conversation(conversation_id, "assistant", full_answer, all_sources[:5])
+    
+    # Send done message
+    done_msg = {
+        "type": "done",
+        "tool_calls": tool_calls_made,
+        "sources_count": len(all_sources)
+    }
+    yield f"data: {json.dumps(done_msg)}\n\n"
+
+
+@app.get("/chat/agent")
+async def chat_agent_stream(
+    message: str, 
+    user_id: str = "default_user", 
+    conversation_id: str = None
+):
+    """
+    Agentic RAG chat endpoint with streaming.
+    The LLM decides what to search and can make multiple searches.
+    Shows thinking process in real-time.
+    """
+    # Create conversation if needed
+    if not conversation_id:
+        conversation = create_conversation(message)
+        conversation_id = conversation['id']
+    
+    # Add user message
+    add_message_to_conversation(conversation_id, "user", message)
+    
+    return StreamingResponse(
+        run_agent_with_streaming(message, user_id, conversation_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+# ==================== Chat Endpoint (Original) ====================
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
@@ -3730,6 +4149,86 @@ def process_youtube(request: UrlRequest):
     
     except Exception as e:
         return IngestResponse(success=False, message=str(e))
+
+# ==================== Debug Endpoint ====================
+
+@app.get("/debug/search")
+def debug_search(query: str, top_k: int = 10):
+    """
+    Debug endpoint to see exactly what chunks are retrieved for a query.
+    Use this to diagnose retrieval issues.
+    """
+    try:
+        # Get query variations from LLM
+        query_variations = rewrite_query_with_llm(query)
+        
+        all_results = []
+        seen_content = set()
+        
+        for variation in query_variations:
+            # Embed and search
+            query_vector = embeddings.embed_query(variation)
+            results = index.query(vector=query_vector, top_k=top_k, include_metadata=True)
+            
+            for match in results.matches:
+                content = match.metadata.get("content", "")[:200]
+                if content not in seen_content:
+                    seen_content.add(content)
+                    all_results.append({
+                        "variation_used": variation,
+                        "score": round(float(match.score), 4),
+                        "source": match.metadata.get("source", "")[:100],
+                        "title": match.metadata.get("title", "")[:100],
+                        "type": match.metadata.get("type", ""),
+                        "content_preview": content
+                    })
+        
+        # Sort by score
+        all_results.sort(key=lambda x: x["score"], reverse=True)
+        
+        return {
+            "original_query": query,
+            "query_variations": query_variations,
+            "total_results": len(all_results),
+            "top_results": all_results[:top_k]
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/debug/chunks")
+def debug_chunks_by_source(source_contains: str = "", limit: int = 20):
+    """
+    Debug endpoint to see what chunks exist for a specific source.
+    Example: /debug/chunks?source_contains=azure
+    """
+    try:
+        # This requires listing vectors which isn't directly supported
+        # So we'll search with a broad query
+        query_vector = embeddings.embed_query(source_contains or "pricing")
+        results = index.query(vector=query_vector, top_k=100, include_metadata=True)
+        
+        filtered = []
+        for match in results.matches:
+            source = match.metadata.get("source", "").lower()
+            title = match.metadata.get("title", "").lower()
+            if source_contains.lower() in source or source_contains.lower() in title:
+                filtered.append({
+                    "score": round(float(match.score), 4),
+                    "source": match.metadata.get("source", ""),
+                    "title": match.metadata.get("title", ""),
+                    "type": match.metadata.get("type", ""),
+                    "content_preview": match.metadata.get("content", "")[:300]
+                })
+        
+        return {
+            "filter": source_contains,
+            "found": len(filtered),
+            "chunks": filtered[:limit]
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/stats")
 def get_stats():

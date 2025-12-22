@@ -1484,6 +1484,124 @@
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.2); }
         }
+        
+        /* ========== Agentic Thinking UI ========== */
+        
+        .message-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex: 1;
+        }
+        
+        .thinking-container {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .thinking-container.collapsed {
+            padding: 8px 12px;
+        }
+        
+        .thinking-container.collapsed .thinking-steps {
+            display: none;
+        }
+        
+        .thinking-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+        
+        .thinking-icon {
+            font-size: 16px;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        .thinking-container.collapsed .thinking-icon {
+            animation: none;
+        }
+        
+        .thinking-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #a78bfa;
+        }
+        
+        .thinking-toggle {
+            margin-left: auto;
+            color: #888;
+            font-size: 10px;
+            transition: transform 0.3s ease;
+        }
+        
+        .thinking-container.collapsed .thinking-toggle {
+            transform: rotate(-90deg);
+        }
+        
+        .thinking-steps {
+            margin-top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .thinking-step {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        
+        .step-icon {
+            font-size: 14px;
+            min-width: 20px;
+        }
+        
+        .step-text {
+            flex: 1;
+            color: #ccc;
+            word-break: break-word;
+        }
+        
+        .step-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(167, 139, 250, 0.3);
+            border-top-color: #a78bfa;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .step-result {
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        
+        .result-success {
+            color: #10b981;
+        }
+        
+        .result-empty {
+            color: #f59e0b;
+        }
+        
+        .result-error {
+            color: #ef4444;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
     </style>
 </head>
 <body>
@@ -1980,17 +2098,40 @@
             const streamingBadge = document.getElementById('streaming-badge');
             streamingBadge.classList.remove('hidden');
 
-            // Create bot message placeholder
+            // Create bot message placeholder with thinking section
             const messagesDiv = document.getElementById('chat-messages');
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message bot';
-            messageDiv.innerHTML = `<div class="message-avatar">🤖</div><div class="message-content streaming"></div>`;
+            messageDiv.innerHTML = `
+                <div class="message-avatar">🤖</div>
+                <div class="message-wrapper">
+                    <div class="thinking-container" id="thinking-container">
+                        <div class="thinking-header">
+                            <span class="thinking-icon">🧠</span>
+                            <span class="thinking-title">Thinking...</span>
+                        </div>
+                        <div class="thinking-steps" id="thinking-steps"></div>
+                    </div>
+                    <div class="message-content streaming"></div>
+                </div>
+            `;
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
             const contentDiv = messageDiv.querySelector('.message-content');
+            const thinkingContainer = messageDiv.querySelector('#thinking-container');
+            const thinkingSteps = messageDiv.querySelector('#thinking-steps');
             let fullContent = '';
             let sources = [];
+            let toolCalls = [];
+
+            // Tool icons mapping
+            const toolIcons = {
+                'search_knowledge_base': '🔍',
+                'list_available_sources': '📋',
+                'get_source_content': '📄',
+                'generating': '✍️'
+            };
 
             try {
                 const params = new URLSearchParams({
@@ -2001,42 +2142,96 @@
                     params.append('conversation_id', currentConversationId);
                 }
 
-                // Use EventSource for proper SSE handling
-                const eventSource = new EventSource(`${API_URL}/chat/stream?${params}`);
+                // Use Agentic RAG endpoint
+                const eventSource = new EventSource(`${API_URL}/chat/agent?${params}`);
                 let tokenInfo = null;
                 
                 eventSource.onmessage = function(event) {
                     try {
                         const data = JSON.parse(event.data);
 
-                        if (data.type === 'sources') {
+                        if (data.type === 'thinking') {
+                            // Show thinking step
+                            const stepIcon = toolIcons[data.step] || '💭';
+                            const stepDiv = document.createElement('div');
+                            stepDiv.className = 'thinking-step';
+                            stepDiv.innerHTML = `
+                                <span class="step-icon">${stepIcon}</span>
+                                <span class="step-text">${getThinkingText(data.step, data.detail)}</span>
+                                <span class="step-spinner"></span>
+                            `;
+                            thinkingSteps.appendChild(stepDiv);
+                            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                            
+                        } else if (data.type === 'tool_result') {
+                            // Update last thinking step with result
+                            const lastStep = thinkingSteps.lastElementChild;
+                            if (lastStep) {
+                                const spinner = lastStep.querySelector('.step-spinner');
+                                if (spinner) {
+                                    spinner.className = 'step-result';
+                                    if (data.success && data.found > 0) {
+                                        spinner.innerHTML = `<span class="result-success">✓ Found ${data.found} results</span>`;
+                                    } else if (data.success) {
+                                        spinner.innerHTML = `<span class="result-empty">○ No results</span>`;
+                                    } else {
+                                        spinner.innerHTML = `<span class="result-error">✗ Failed</span>`;
+                                    }
+                                }
+                            }
+                            toolCalls.push(data);
+                            
+                        } else if (data.type === 'sources') {
                             sources = data.data;
                             currentConversationId = data.conversation_id;
+                            
+                        } else if (data.type === 'token') {
+                            // Streaming answer token
+                            fullContent += data.content;
+                            const isRtl = isArabic(fullContent);
+                            contentDiv.className = `message-content streaming ${isRtl ? 'rtl' : ''}`;
+                            contentDiv.innerHTML = parseMarkdown(fullContent);
+                            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                            
                         } else if (data.type === 'chunk') {
+                            // Fallback for old format
                             fullContent += data.data;
                             const isRtl = isArabic(fullContent);
                             contentDiv.className = `message-content streaming ${isRtl ? 'rtl' : ''}`;
                             contentDiv.innerHTML = parseMarkdown(fullContent);
                             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                            
                         } else if (data.type === 'token_info') {
                             tokenInfo = data.data;
+                            
                         } else if (data.type === 'done') {
                             eventSource.close();
+                            
+                            // Collapse thinking section
+                            thinkingContainer.classList.add('collapsed');
+                            const thinkingHeader = thinkingContainer.querySelector('.thinking-header');
+                            thinkingHeader.innerHTML = `
+                                <span class="thinking-icon">✓</span>
+                                <span class="thinking-title">Completed ${toolCalls.length} search${toolCalls.length !== 1 ? 'es' : ''}</span>
+                                <span class="thinking-toggle" onclick="this.closest('.thinking-container').classList.toggle('collapsed')">▼</span>
+                            `;
+                            
                             contentDiv.classList.remove('streaming');
-                            // Final parse with image processing
                             contentDiv.innerHTML = parseMarkdown(fullContent);
+                            
                             if (sources.length > 0) {
                                 contentDiv.innerHTML += buildSourcesHtml(sources, fullContent);
                             }
-                            // Add token info panel
                             if (tokenInfo) {
                                 contentDiv.innerHTML += buildTokenInfoHtml(tokenInfo);
                             }
                             streamingBadge.classList.add('hidden');
+                            
                         } else if (data.type === 'error') {
                             eventSource.close();
                             contentDiv.classList.remove('streaming');
                             contentDiv.innerHTML = `<p style="color: #ff6b6b;">Error: ${data.data}</p>`;
+                            thinkingContainer.style.display = 'none';
                             streamingBadge.classList.add('hidden');
                         }
                     } catch (e) {
@@ -2050,6 +2245,7 @@
                     contentDiv.classList.remove('streaming');
                     if (!fullContent) {
                         contentDiv.innerHTML = '<p style="color: #ff6b6b;">Connection error. Please try again.</p>';
+                        thinkingContainer.style.display = 'none';
                     } else if (sources.length > 0) {
                         contentDiv.innerHTML += buildSourcesHtml(sources, fullContent);
                     }
@@ -2060,8 +2256,19 @@
                 console.error('Streaming error:', error);
                 contentDiv.classList.remove('streaming');
                 contentDiv.innerHTML = '<p style="color: #ff6b6b;">Sorry, there was an error processing your request.</p>';
+                thinkingContainer.style.display = 'none';
                 streamingBadge.classList.add('hidden');
             }
+        }
+        
+        function getThinkingText(step, detail) {
+            const stepTexts = {
+                'search_knowledge_base': `Searching: "${detail}"`,
+                'list_available_sources': 'Checking available sources...',
+                'get_source_content': `Getting content from: ${detail}`,
+                'generating': 'Writing response...'
+            };
+            return stepTexts[step] || `${step}: ${detail}`;
         }
 
         async function sendRegularMessage(message) {
