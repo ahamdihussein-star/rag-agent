@@ -2939,15 +2939,20 @@ def execute_tool(tool_name: str, arguments: dict) -> dict:
         # Use existing search with reranking
         try:
             query_vector = embeddings.embed_query(query)
-            results = index.query(vector=query_vector, top_k=top_k * 2, include_metadata=True)
+            results = index.query(vector=query_vector, top_k=top_k * 3, include_metadata=True)
             
-            # Format results
+            # Format results - EXCLUDE MEMORY to get actual data
             search_results = []
             seen_content = set()
             
             for match in results.matches:
+                # Skip memory type - we want actual documents/websites only
+                doc_type = match.metadata.get("type", "")
+                if doc_type == "memory":
+                    continue
+                    
                 content = match.metadata.get("content", "") or match.metadata.get("text", "")
-                if content[:100] in seen_content:
+                if not content or content[:100] in seen_content:
                     continue
                 seen_content.add(content[:100])
                 
@@ -2955,7 +2960,7 @@ def execute_tool(tool_name: str, arguments: dict) -> dict:
                     "content": content[:1500],  # Limit content size
                     "source": match.metadata.get("source", "Unknown"),
                     "title": match.metadata.get("title", ""),
-                    "type": match.metadata.get("type", ""),
+                    "type": doc_type,
                     "score": float(match.score)
                 })
             
@@ -3061,38 +3066,50 @@ async def run_agent_with_streaming(question: str, user_id: str, conversation_id:
     """
     
     # System prompt for the agent
-    system_prompt = """You are an intelligent AI assistant with access to a knowledge base. You have tools to search and retrieve information.
+    system_prompt = """You are an intelligent AI assistant with access to a knowledge base AND your own extensive knowledge. You combine both to give the best possible answers.
 
 YOUR CAPABILITIES:
-1. search_knowledge_base: Search for specific information
+1. search_knowledge_base: Search for specific, up-to-date information (prices, specs, etc.)
 2. list_available_sources: See what documents/sources exist
 3. get_source_content: Get all content from a specific source
 
 HOW TO BEHAVE:
-1. THINK about what information you need to answer the question
-2. USE tools to find the information - you can search multiple times with different queries
-3. EVALUATE the results - if you didn't find what you need, try a different search
-4. ANSWER based ONLY on what you found in the tool results
+1. SEARCH the knowledge base for specific data (prices, specs, current info)
+2. COMBINE the search results with your general knowledge
+3. PROVIDE intelligent analysis, comparisons, and recommendations
 
-CRITICAL RULES:
-- **ALWAYS USE THE ACTUAL DATA** from tool results in your answers
-- If tool results contain specific numbers, prices, specs - USE THEM EXACTLY
-- Quote specific values: "$6.86/month", "2 vCPUs", "4 GB RAM" etc.
-- Be smart about searching - use different phrasings if first search doesn't work
-- If comparing things, search for each separately
-- If you find partial information, say what you found and what's missing
-- NEVER make up information or use your general knowledge - ONLY use data from the search results
-- Be conversational and helpful
-- Use markdown formatting, especially for tables with pricing data
+CRITICAL RULES FOR USING DATA:
+- For SPECIFIC NUMBERS (prices, specs, dates): Use ONLY data from search results - quote them exactly
+- For ANALYSIS, COMPARISONS, EXPLANATIONS: Use your intelligence and general knowledge
+- For RECOMMENDATIONS: Combine search data with your understanding
 
-EXAMPLE OF GOOD ANSWER:
-User asks: "What's the price of Azure B2s VM?"
-Tool returns: {"content": "B2ats v2: $6.8620/month pay-as-you-go, $4.5990/month 1-year savings"}
-Good answer: "The Azure B2ats v2 costs **$6.86/month** with pay-as-you-go pricing, or **$4.60/month** with a 1-year savings plan."
+WHEN COMPARING SERVICES (like Oracle vs Azure):
+1. Search for each provider's pricing data
+2. Use the actual prices found in results
+3. ADD your knowledge to explain:
+   - What use cases each is best for
+   - How the pricing models differ (OCPU vs vCPU, etc.)
+   - Which workloads suit each provider
+   - Real-world considerations
 
-WHEN TO SAY "I DON'T HAVE THIS INFORMATION":
-- Only after trying multiple relevant searches
-- Be specific about what you searched for and didn't find"""
+EXAMPLE OF A GREAT COMPARISON:
+User: "Compare Oracle and Azure compute"
+You should:
+- Quote actual prices from search: "Oracle E4: 0.091 AED/OCPU/hour, Azure E2bs: $127/month"
+- Explain the difference: "Oracle uses OCPU (2 vCPUs), Azure uses vCPU directly"
+- Give insights: "Oracle's Ampere A1 free tier (3000 OCPU hours/month) is great for dev/test"
+- Recommend: "For burstable workloads, Azure B-series. For consistent compute, Oracle Standard."
+
+FORMATTING:
+- Use tables for pricing comparisons
+- Use bullet points for features
+- Be conversational but informative
+- Give actionable insights, not just data dumps
+
+NEVER:
+- Make up specific prices or numbers - only use what you find
+- Give vague answers when you have specific data
+- Just list data without analysis"""
 
     # Get conversation history
     conv = load_conversation(conversation_id) if conversation_id else None
