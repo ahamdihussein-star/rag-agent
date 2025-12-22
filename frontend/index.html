@@ -1598,15 +1598,19 @@
             color: #ef4444;
         }
         
-        /* Beautiful Markdown Tables */
+        /* Beautiful Markdown Tables - Responsive */
         .message-content table {
             width: 100%;
+            max-width: 100%;
             border-collapse: collapse;
             margin: 16px 0;
-            font-size: 14px;
+            font-size: 13px;
             background: rgba(0, 0, 0, 0.2);
             border-radius: 8px;
             overflow: hidden;
+            display: block;
+            overflow-x: auto;
+            white-space: nowrap;
         }
         
         .message-content thead {
@@ -1614,18 +1618,21 @@
         }
         
         .message-content th {
-            padding: 12px 16px;
+            padding: 10px 12px;
             text-align: left;
             font-weight: 600;
             color: #fff;
             border-bottom: 2px solid rgba(255, 255, 255, 0.1);
             white-space: nowrap;
+            font-size: 12px;
         }
         
         .message-content td {
-            padding: 10px 16px;
+            padding: 8px 12px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             color: #e0e0e0;
+            white-space: nowrap;
+            font-size: 12px;
         }
         
         .message-content tbody tr:hover {
@@ -1641,16 +1648,23 @@
             background: rgba(255, 255, 255, 0.02);
         }
         
-        /* Price/number cells - right align */
-        .message-content td:last-child,
-        .message-content th:last-child {
-            text-align: right;
+        /* Scrollbar styling for tables */
+        .message-content table::-webkit-scrollbar {
+            height: 6px;
         }
         
-        /* Make tables responsive */
-        .message-content .table-wrapper {
-            overflow-x: auto;
-            margin: 16px 0;
+        .message-content table::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        
+        .message-content table::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+        
+        .message-content table::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
         }
         
         @keyframes pulse {
