@@ -287,7 +287,7 @@
 
         /* Streaming Cursor */
         .message-content.streaming::after {
-            content: 'â–Š';
+            content: '▼';
             animation: cursor-blink 0.8s infinite;
             color: #00d9ff;
             margin-left: 2px;
@@ -1888,7 +1888,7 @@
     <!-- Conversations Sidebar -->
     <div class="conversations-sidebar">
         <div class="sidebar-header">
-            <h2>ðŸ’¬ Conversations</h2>
+            <h2>💬 Conversations</h2>
             <button class="new-chat-btn" onclick="newChat()">
                 <span>âž•</span> New Chat
             </button>
@@ -1898,10 +1898,10 @@
         </div>
         <div class="sidebar-footer">
             <a href="/monitor" class="admin-link" style="margin-bottom: 8px;">
-                <span>ðŸ“Š</span> Pipeline Monitor
+                <span>📊</span> Pipeline Monitor
             </a>
             <a href="/admin" class="admin-link">
-                <span>âš™ï¸</span> Admin Dashboard
+                <span>⚙ï¸</span> Admin Dashboard
             </a>
         </div>
     </div>
@@ -1910,8 +1910,8 @@
     <div class="main-wrapper">
         <div class="container">
             <header>
-                <h1>ðŸ¤– RAG Agent</h1>
-                <p>AI-powered assistant with long-term memory <span id="streaming-badge" class="streaming-badge hidden">âš¡ Streaming</span></p>
+                <h1>🤖 RAG Agent</h1>
+                <p>AI-powered assistant with long-term memory <span id="streaming-badge" class="streaming-badge hidden">⚡ Streaming</span></p>
             </header>
 
             <div class="main-content">
@@ -1919,7 +1919,7 @@
                 <div class="chat-section">
                     <div class="chat-messages" id="chat-messages">
                         <div class="welcome-screen" id="welcome-screen">
-                            <div class="welcome-icon">ðŸ¤–</div>
+                            <div class="welcome-icon">🤖</div>
                             <div class="welcome-title">Welcome to RAG Agent!</div>
                             <div class="welcome-text">
                                 Start a new conversation or select a previous one from the sidebar. 
@@ -1932,7 +1932,7 @@
                         <div class="token-preview hidden" id="token-preview">
                             <div class="token-preview-header" onclick="toggleCostDetails()">
                                 <div class="token-preview-stat">
-                                    <span class="icon">ðŸ“Š</span>
+                                    <span class="icon">📊</span>
                                     <span class="value" id="preview-tokens">0</span>
                                     <span class="label">tokens</span>
                                 </div>
@@ -1940,34 +1940,34 @@
                                     <span class="label">Total â‰ˆ</span>
                                     <span class="value" id="preview-cost">$0.00</span>
                                 </div>
-                                <span class="expand-arrow" id="cost-expand-arrow">â–¼</span>
+                                <span class="expand-arrow" id="cost-expand-arrow">▼</span>
                             </div>
                             
                             <!-- Expandable Cost Breakdown -->
                             <div class="cost-details-panel hidden" id="cost-details-panel">
                                 <div class="cost-detail-row">
-                                    <span class="cost-label">ðŸ”¢ Query Embedding</span>
+                                    <span class="cost-label">🔍¢ Query Embedding</span>
                                     <span class="cost-value" id="cost-embedding">$0.000001</span>
                                 </div>
                                 <div class="cost-detail-row">
-                                    <span class="cost-label">ðŸŽ¯ Reranking (Cohere)</span>
+                                    <span class="cost-label">🎯 Reranking (Cohere)</span>
                                     <span class="cost-value" id="cost-rerank">$0.000500</span>
                                 </div>
                                 <div class="cost-detail-row">
-                                    <span class="cost-label">ðŸ¤– GPT-4o Input</span>
+                                    <span class="cost-label">🤖 GPT-4o Input</span>
                                     <span class="cost-value" id="cost-llm-input">$0.00</span>
                                 </div>
                                 <div class="cost-detail-row">
-                                    <span class="cost-label">ðŸ¤– GPT-4o Output</span>
+                                    <span class="cost-label">🤖 GPT-4o Output</span>
                                     <span class="cost-value" id="cost-llm-output">$0.00</span>
                                 </div>
                                 <div class="cost-detail-row total">
-                                    <span class="cost-label">ðŸ’° Total Estimated</span>
+                                    <span class="cost-label">💰 Total Estimated</span>
                                     <span class="cost-value" id="cost-total">$0.00</span>
                                 </div>
                             </div>
                             
-                            <button class="analyze-btn" onclick="showOptimizationModal()">ðŸ’¡ Optimize</button>
+                            <button class="analyze-btn" onclick="showOptimizationModal()">💡 Optimize</button>
                         </div>
                         
                         
@@ -2005,7 +2005,7 @@
                             <span class="input-hint">Press Enter to send</span>
                             <label class="streaming-toggle">
                                 <input type="checkbox" id="streaming-toggle" checked>
-                                <span>âš¡ Streaming</span>
+                                <span>⚡ Streaming</span>
                             </label>
                         </div>
                     </div>
@@ -2014,9 +2014,9 @@
                 <!-- Right Sidebar -->
                 <div class="sidebar">
                     <div class="panel">
-                        <h3>ðŸ“„ Upload Files</h3>
+                        <h3>📄 Upload Files</h3>
                         <div class="upload-area" onclick="document.getElementById('file-input').click()">
-                            <div class="upload-icon">ðŸ“</div>
+                            <div class="upload-icon">📁</div>
                             <div class="upload-text">Click or drag files<br>(PDF, Word, Excel, PPT, Video, Images)</div>
                         </div>
                         <input type="file" id="file-input" accept=".pdf,.txt,.docx,.xlsx,.xls,.pptx,.mp4,.mp3,.wav,.m4a,.mov,.avi,.webm,.jpg,.jpeg,.png,.gif,.webp" onchange="uploadFile(this.files[0])">
@@ -2035,7 +2035,7 @@
                     </div>
 
                     <div class="panel">
-                        <h3>ðŸŒ Add Website</h3>
+                        <h3>🌐 Add Website</h3>
                         <div class="url-input-group">
                             <input type="url" class="url-input" id="website-input" placeholder="https://example.com/docs">
                             <button class="add-btn" onclick="addWebsite()">Add</button>
@@ -2045,7 +2045,7 @@
                         <div style="margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
                             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 10px;">
                                 <input type="checkbox" id="recursive-scrape" style="width: 18px; height: 18px; cursor: pointer;">
-                                <span style="font-size: 14px;">ðŸ”„ Scrape Subpages (Recursive)</span>
+                                <span style="font-size: 14px;">🔍„ Scrape Subpages (Recursive)</span>
                             </label>
                             
                             <div id="recursive-options" style="display: none; margin-top: 10px;">
@@ -2087,7 +2087,7 @@
                                     <span id="website-progress-step" style="font-size: 13px; font-weight: 600; color: #fff;">Initializing...</span>
                                 </div>
                                 <div style="text-align: right;">
-                                    <div id="website-eta" style="font-size: 12px; color: #00ff88; font-weight: 600;">â±ï¸ Calculating...</div>
+                                    <div id="website-eta" style="font-size: 12px; color: #00ff88; font-weight: 600;">â±ï¸ Calculating...</div>
                                     <div id="website-progress-percent" style="font-size: 11px; color: #888;">0%</div>
                                 </div>
                             </div>
@@ -2101,7 +2101,7 @@
                             <!-- Current Action Detail -->
                             <div style="margin-top: 10px; padding: 8px 10px; background: rgba(0,217,255,0.1); border-radius: 8px; border-left: 3px solid #00d9ff;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span id="website-action-icon" style="font-size: 14px;">ðŸŒ</span>
+                                    <span id="website-action-icon" style="font-size: 14px;">🌐</span>
                                     <span id="website-progress-text" style="font-size: 11px; color: #ccc; word-break: break-all;">Starting...</span>
                                 </div>
                             </div>
@@ -2125,13 +2125,13 @@
                         
                         <!-- Pages scraped list -->
                         <div id="pages-scraped-container" style="display: none; margin-top: 10px; max-height: 150px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;">
-                            <div style="font-size: 12px; color: #10b981; margin-bottom: 8px;">ðŸ“„ Pages Scraped:</div>
+                            <div style="font-size: 12px; color: #10b981; margin-bottom: 8px;">📄 Pages Scraped:</div>
                             <div id="pages-scraped-list" style="font-size: 11px; color: #888;"></div>
                         </div>
                     </div>
 
                     <div class="panel">
-                        <h3>ðŸŽ¬ Add YouTube</h3>
+                        <h3>🎬 Add YouTube</h3>
                         <div class="url-input-group">
                             <input type="url" class="url-input" id="youtube-input" placeholder="YouTube URL">
                             <button class="add-btn" onclick="addYouTube()">Add</button>
@@ -2151,7 +2151,7 @@
                     </div>
 
                     <div class="panel">
-                        <h3>ðŸ“Š Knowledge Base</h3>
+                        <h3>📊 Knowledge Base</h3>
                         <div class="stats">
                             <div class="stat-item">
                                 <div class="stat-value" id="vector-count">-</div>
@@ -2277,12 +2277,12 @@
 
             list.innerHTML = conversations.map(conv => `
                 <div class="conversation-item ${conv.id === currentConversationId ? 'active' : ''}" onclick="loadConversation('${conv.id}')">
-                    <span class="conversation-icon">ðŸ’¬</span>
+                    <span class="conversation-icon">💬</span>
                     <div class="conversation-info">
                         <div class="conversation-title">${escapeHtml(conv.title)}</div>
                         <div class="conversation-date">${formatDate(conv.updated_at)}</div>
                     </div>
-                    <button class="conversation-delete" onclick="event.stopPropagation(); deleteConversation('${conv.id}')" title="Delete">ðŸ—‘ï¸</button>
+                    <button class="conversation-delete" onclick="event.stopPropagation(); deleteConversation('${conv.id}')" title="Delete">🗑ï¸</button>
                 </div>
             `).join('');
         }
@@ -2359,7 +2359,7 @@
             const messagesDiv = document.getElementById('chat-messages');
             messagesDiv.innerHTML = `
                 <div class="welcome-screen" id="welcome-screen">
-                    <div class="welcome-icon">ðŸ¤–</div>
+                    <div class="welcome-icon">🤖</div>
                     <div class="welcome-title">Welcome to RAG Agent!</div>
                     <div class="welcome-text">
                         Start a new conversation or select a previous one from the sidebar. 
@@ -2410,12 +2410,13 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message bot';
             messageDiv.innerHTML = `
-                <div class="message-avatar">ðŸ¤–</div>
+                <div class="message-avatar">🤖</div>
                 <div class="message-wrapper">
                     <div class="thinking-container" id="thinking-container">
-                        <div class="thinking-header">
-                            <span class="thinking-icon">ðŸ§ </span>
-                            <span class="thinking-title">Thinking...</span>
+                        <div class="thinking-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                            <span class="thinking-icon">🧠</span>
+                            <span class="thinking-title">Agent Working...</span>
+                            <span class="thinking-toggle">▼</span>
                         </div>
                         <div class="thinking-steps" id="thinking-steps"></div>
                     </div>
@@ -2434,11 +2435,11 @@
 
             // Tool icons mapping
             const toolIcons = {
-                'search_knowledge_base': 'ðŸ”',
-                'search_web': 'ðŸŒ',
-                'list_available_sources': 'ðŸ“‹',
-                'get_source_content': 'ðŸ“„',
-                'generating': 'âœï¸'
+                'search_knowledge_base': '🔍',
+                'search_web': '🌐',
+                'list_available_sources': '📋',
+                'get_source_content': '📄',
+                'generating': '✍ï¸'
             };
 
             try {
@@ -2465,7 +2466,7 @@
 
                         if (data.type === 'thinking') {
                             // Show thinking step
-                            const stepIcon = toolIcons[data.step] || 'ðŸ’­';
+                            const stepIcon = toolIcons[data.step] || '💭';
                             const stepDiv = document.createElement('div');
                             stepDiv.className = 'thinking-step';
                             stepDiv.innerHTML = `
@@ -2484,11 +2485,11 @@
                                 if (spinner) {
                                     spinner.className = 'step-result';
                                     if (data.success && data.found > 0) {
-                                        spinner.innerHTML = `<span class="result-success">âœ“ Found ${data.found} results</span>`;
+                                        spinner.innerHTML = `<span class="result-success">✓ Found ${data.found} results</span>`;
                                     } else if (data.success) {
-                                        spinner.innerHTML = `<span class="result-empty">â—‹ No results</span>`;
+                                        spinner.innerHTML = `<span class="result-empty">○ No results</span>`;
                                     } else {
-                                        spinner.innerHTML = `<span class="result-error">âœ— Failed</span>`;
+                                        spinner.innerHTML = `<span class="result-error">✗ Failed</span>`;
                                     }
                                 }
                             }
@@ -2524,9 +2525,9 @@
                             thinkingContainer.classList.add('collapsed');
                             const thinkingHeader = thinkingContainer.querySelector('.thinking-header');
                             thinkingHeader.innerHTML = `
-                                <span class="thinking-icon">âœ“</span>
+                                <span class="thinking-icon">✓</span>
                                 <span class="thinking-title">Completed ${toolCalls.length} search${toolCalls.length !== 1 ? 'es' : ''}</span>
-                                <span class="thinking-toggle" onclick="this.closest('.thinking-container').classList.toggle('collapsed')">â–¼</span>
+                                <span class="thinking-toggle" onclick="this.closest('.thinking-container').classList.toggle('collapsed')">▼</span>
                             `;
                             
                             contentDiv.classList.remove('streaming');
@@ -2576,13 +2577,15 @@
         
         function getThinkingText(step, detail) {
             const stepTexts = {
-                'search_knowledge_base': `Searching KB: "${detail}"`,
-                'search_web': `Searching Web: "${detail}"`,
-                'list_available_sources': 'Checking available sources...',
-                'get_source_content': `Getting content from: ${detail}`,
-                'generating': 'Writing response...'
+                'search_knowledge_base': `🔍 Searching knowledge base${detail ? ': "' + detail.substring(0, 50) + (detail.length > 50 ? '..."' : '"') : ''}`,
+                'search_web': `🌐 Searching the web${detail ? ': "' + detail.substring(0, 50) + (detail.length > 50 ? '..."' : '"') : ''}`,
+                'list_available_sources': '📋 Listing available sources in knowledge base',
+                'get_source_content': `📄 Reading source${detail ? ': ' + detail.substring(0, 40) : ''}`,
+                'generating': '✍️ Generating response...',
+                'analyzing': '🔬 Analyzing results...',
+                'comparing': '⚖️ Comparing data...'
             };
-            return stepTexts[step] || `${step}: ${detail}`;
+            return stepTexts[step] || `💭 ${step}${detail ? ': ' + detail : ''}`;
         }
 
         async function sendRegularMessage(message) {
@@ -2618,15 +2621,15 @@
         }
 
         function buildSourcesHtml(sources, content = '') {
-            let html = '<div class="sources"><div class="sources-title">ðŸ“š Sources</div><ul>';
+            let html = '<div class="sources"><div class="sources-title">📁š Sources</div><ul>';
             sources.forEach(source => {
-                const icon = source.type === 'youtube' ? 'ðŸŽ¬' : 
-                            source.type === 'website' ? 'ðŸŒ' : 
-                            source.type === 'video' ? 'ðŸŽ¥' :
-                            source.type === 'image' ? 'ðŸ–¼ï¸' :
-                            source.type === 'memory' ? 'ðŸ§ ' :
-                            source.type === 'spreadsheet' ? 'ðŸ“Š' :
-                            source.type === 'presentation' ? 'ðŸ“½ï¸' : 'ðŸ“„';
+                const icon = source.type === 'youtube' ? '🎬' : 
+                            source.type === 'website' ? '🌐' : 
+                            source.type === 'video' ? '🎥' :
+                            source.type === 'image' ? '🖼ï¸' :
+                            source.type === 'memory' ? '🧠' :
+                            source.type === 'spreadsheet' ? '📊' :
+                            source.type === 'presentation' ? '📁½ï¸' : '📄';
                 
                 const isWebLink = source.source && source.source.startsWith('http');
                 let linkHtml = isWebLink 
@@ -2634,7 +2637,7 @@
                     : `<span>${source.title || source.source}</span>`;
                 
                 let downloadHtml = source.download_url 
-                    ? `<a href="${API_URL}${source.download_url}" class="download-btn" download>â¬‡ï¸ Download</a>` 
+                    ? `<a href="${API_URL}${source.download_url}" class="download-btn" download>â¬‡ï¸ Download</a>` 
                     : '';
                 
                 html += `<li><span>${icon}</span> ${linkHtml} ${downloadHtml} <span class="score">${Math.round(source.score * 100)}%</span></li>`;
@@ -2665,8 +2668,8 @@
                 suggestionsHtml = `
                     <div class="token-suggestions">
                         <div class="suggestions-title" onclick="this.parentElement.classList.toggle('expanded')">
-                            ðŸ’¡ Optimization Suggestions (${tokenInfo.suggestions.length})
-                            <span class="expand-icon">â–¼</span>
+                            💡 Optimization Suggestions (${tokenInfo.suggestions.length})
+                            <span class="expand-icon">▼</span>
                         </div>
                         <div class="suggestions-list">
                             ${tokenInfo.suggestions.map(s => `
@@ -2675,7 +2678,7 @@
                                     <div class="suggestion-content">
                                         <div class="suggestion-title">${s.title}</div>
                                         <div class="suggestion-desc">${s.description}</div>
-                                        ${s.potential_savings ? `<div class="suggestion-savings">ðŸ’° Potential savings: ${s.potential_savings}</div>` : ''}
+                                        ${s.potential_savings ? `<div class="suggestion-savings">💰 Potential savings: ${s.potential_savings}</div>` : ''}
                                     </div>
                                 </div>
                             `).join('')}
@@ -2687,12 +2690,12 @@
             return `
                 <div class="token-info-panel">
                     <div class="token-header" onclick="this.parentElement.classList.toggle('expanded')">
-                        <span class="token-icon">ðŸ“Š</span>
+                        <span class="token-icon">📊</span>
                         <span class="token-summary">
                             <strong>${tokenInfo.total_tokens.toLocaleString()}</strong> tokens
                             <span class="token-cost">â‰ˆ $${tokenInfo.cost.toFixed(4)}</span>
                         </span>
-                        <span class="expand-icon">â–¼</span>
+                        <span class="expand-icon">▼</span>
                     </div>
                     <div class="token-details">
                         <div class="token-breakdown-visual">
@@ -2711,24 +2714,24 @@
                         </div>
                         <div class="token-stats">
                             <div class="stat-row">
-                                <span>ðŸ“¥ Input tokens:</span>
+                                <span>📁¥ Input tokens:</span>
                                 <span>${tokenInfo.input_tokens.toLocaleString()}</span>
                             </div>
                             <div class="stat-row">
-                                <span>ðŸ“¤ Output tokens:</span>
+                                <span>📁¤ Output tokens:</span>
                                 <span>${tokenInfo.output_tokens.toLocaleString()}</span>
                             </div>
                             <div class="stat-row total">
-                                <span>ðŸ“Š Total:</span>
+                                <span>📊 Total:</span>
                                 <span>${tokenInfo.total_tokens.toLocaleString()}</span>
                             </div>
                             <div class="stat-row cost">
-                                <span>ðŸ’° Cost:</span>
+                                <span>💰 Cost:</span>
                                 <span>$${tokenInfo.cost.toFixed(6)}</span>
                             </div>
                         </div>
                         <div class="token-formula">
-                            <small>ðŸ“ ${tokenInfo.formula}</small>
+                            <small>📁 ${tokenInfo.formula}</small>
                         </div>
                         ${suggestionsHtml}
                     </div>
@@ -2742,10 +2745,10 @@
             return `
                 <div class="export-section">
                     <button class="export-btn word" onclick="exportToWord('${escapedContent}')">
-                        <span>ðŸ“</span> Export to Word
+                        <span>📁</span> Export to Word
                     </button>
                     <button class="export-btn pdf" onclick="exportToPDF('${escapedContent}')">
-                        <span>ðŸ“„</span> Export to PDF
+                        <span>📄</span> Export to PDF
                     </button>
                 </div>
             `;
@@ -2768,15 +2771,15 @@
         async function exportToWord(encodedContent) {
             const btn = event.target.closest('.export-btn');
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<span>â³</span> Generating...';
+            btn.innerHTML = '<span>â³</span> Generating...';
             btn.disabled = true;
             
             try {
                 const content = decodeURIComponent(escape(atob(encodedContent)));
                 
                 // Debug: log the content being sent
-                console.log('ðŸ“ Export to Word - Content:', content);
-                console.log('ðŸ“ Export to Word - Images in content:', content.match(/!\[([^\]]*)\]\(([^)]+)\)/g));
+                console.log('📁 Export to Word - Content:', content);
+                console.log('📁 Export to Word - Images in content:', content.match(/!\[([^\]]*)\]\(([^)]+)\)/g));
                 
                 const response = await fetch(`${API_URL}/export/word`, {
                     method: 'POST',
@@ -2813,7 +2816,7 @@
         async function exportToPDF(encodedContent) {
             const btn = event.target.closest('.export-btn');
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<span>â³</span> Generating...';
+            btn.innerHTML = '<span>â³</span> Generating...';
             btn.disabled = true;
             
             try {
@@ -2861,7 +2864,7 @@
             const messagesDiv = document.getElementById('chat-messages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
-            const avatar = type === 'user' ? 'ðŸ‘¤' : 'ðŸ¤–';
+            const avatar = type === 'user' ? '👤' : '🤖';
             
             const textToCheck = isHtml ? text.replace(/<[^>]*>/g, '') : text;
             const rtlClass = isArabic(textToCheck) ? ' rtl' : '';
@@ -2880,7 +2883,7 @@
             const messagesDiv = document.getElementById('chat-messages');
             const typingDiv = document.createElement('div');
             typingDiv.className = 'message bot';
-            typingDiv.innerHTML = `<div class="message-avatar">ðŸ¤–</div><div class="typing-indicator"><span></span><span></span><span></span></div>`;
+            typingDiv.innerHTML = `<div class="message-avatar">🤖</div><div class="typing-indicator"><span></span><span></span><span></span></div>`;
             messagesDiv.appendChild(typingDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
             return typingDiv;
@@ -2947,7 +2950,7 @@
                         let chunkerBadge = '';
                         if (data.success && data.chunker_type) {
                             const isSemantic = data.chunker_type === 'semantic';
-                            chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? 'ðŸ§ ' : 'ðŸ“'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                            chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📁'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
                         }
                         statusDiv.innerHTML = data.success 
                             ? `âœ… ${data.message}${chunkerBadge}` 
@@ -3016,7 +3019,7 @@
                 const maxPages = parseInt(document.getElementById('max-pages').value);
                 const samePathOnly = document.getElementById('same-path-only').checked;
                 
-                statusDiv.textContent = `ðŸ”„ Recursively scraping (max ${maxPages} pages)...`;
+                statusDiv.textContent = `🔍„ Recursively scraping (max ${maxPages} pages)...`;
 
                 try {
                     const eventSource = new EventSource(
@@ -3049,7 +3052,7 @@
                             let chunkerBadge = '';
                             if (data.chunker_type) {
                                 const isSemantic = data.chunker_type === 'semantic';
-                                chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? 'ðŸ§ ' : 'ðŸ“'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                                chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📁'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
                             }
                             statusDiv.innerHTML = data.message + chunkerBadge;
                             input.value = '';
@@ -3104,7 +3107,7 @@
                             let chunkerBadge = '';
                             if (data.chunker_type) {
                                 const isSemantic = data.chunker_type === 'semantic';
-                                chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? 'ðŸ§ ' : 'ðŸ“'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                                chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📁'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
                             }
                             statusDiv.innerHTML = data.message + chunkerBadge;
                             input.value = '';
@@ -3176,7 +3179,7 @@
                         let chunkerBadge = '';
                         if (data.chunker_type) {
                             const isSemantic = data.chunker_type === 'semantic';
-                            chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? 'ðŸ§ ' : 'ðŸ“'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                            chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📁'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
                         }
                         statusDiv.innerHTML = data.message + chunkerBadge;
                         input.value = '';
@@ -3305,7 +3308,7 @@
                 suggestions.push({
                     type: 'question',
                     priority: 'medium',
-                    icon: 'âœ‚ï¸',
+                    icon: 'âœ‚ï¸',
                     title: 'Remove filler words',
                     description: `Words like "${foundFillers.slice(0, 2).join('", "')}" can be removed without changing the meaning.`,
                     savings: `~${foundFillers.length * 3} tokens`
@@ -3317,7 +3320,7 @@
                 suggestions.push({
                     type: 'question',
                     priority: 'high',
-                    icon: 'ðŸ“',
+                    icon: '📁',
                     title: 'Shorten your question',
                     description: `Your question uses ${queryTokens} tokens. Try to be more concise and direct.`,
                     savings: `~${queryTokens - 30} tokens`
@@ -3331,7 +3334,7 @@
                 suggestions.push({
                     type: 'question',
                     priority: 'medium',
-                    icon: 'ðŸ”„',
+                    icon: '🔍„',
                     title: 'Remove repeated words',
                     description: 'Your question contains repeated words that could be removed.',
                     savings: `~${words.length - uniqueWords.size} tokens`
@@ -3343,7 +3346,7 @@
                 suggestions.push({
                     type: 'cost',
                     priority: 'high',
-                    icon: 'ðŸ’°',
+                    icon: '💰',
                     title: 'High estimated cost',
                     description: `This query may cost ~$${totalCost.toFixed(4)}. Consider breaking it into smaller questions.`,
                     savings: 'Split into 2-3 questions'
@@ -3355,7 +3358,7 @@
                 suggestions.push({
                     type: 'context',
                     priority: 'info',
-                    icon: 'ðŸ“š',
+                    icon: '📁š',
                     title: 'Use specific keywords',
                     description: 'More specific questions retrieve smaller, more relevant context.',
                     savings: 'Up to 50% context reduction'
@@ -3403,7 +3406,7 @@
                         <div class="opt-suggestion-content">
                             <div class="opt-suggestion-title">${s.title}</div>
                             <div class="opt-suggestion-desc">${s.description}</div>
-                            <div class="opt-suggestion-savings">ðŸ’° Potential savings: ${s.savings}</div>
+                            <div class="opt-suggestion-savings">💰 Potential savings: ${s.savings}</div>
                         </div>
                     </div>
                 `).join('');
@@ -3569,7 +3572,7 @@
     <div class="optimization-modal" id="optimization-modal">
         <div class="optimization-content">
             <div class="optimization-header">
-                <span class="optimization-title">ðŸ’¡ Query Analysis</span>
+                <span class="optimization-title">💡 Query Analysis</span>
                 <button class="optimization-close" onclick="closeOptimizationModal()">&times;</button>
             </div>
             
