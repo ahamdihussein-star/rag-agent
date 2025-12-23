@@ -42,7 +42,7 @@ try:
     from unstructured.partition.text import partition_text
     from unstructured.chunking.title import chunk_by_title
     UNSTRUCTURED_AVAILABLE = True
-    print("âœ… Unstructured.io loaded successfully")
+    print("✅ Unstructured.io loaded successfully")
 except ImportError as e:
     UNSTRUCTURED_AVAILABLE = False
     print(f"⚠️ Unstructured.io not available: {e}. Using fallback parsing.")
@@ -51,7 +51,7 @@ except ImportError as e:
 try:
     from playwright.async_api import async_playwright
     PLAYWRIGHT_AVAILABLE = True
-    print("âœ… Playwright loaded successfully")
+    print("✅ Playwright loaded successfully")
 except ImportError as e:
     PLAYWRIGHT_AVAILABLE = False
     print(f"⚠️ Playwright not available: {e}. Dynamic pages may not render fully.")
@@ -462,7 +462,7 @@ class CostTracker:
                 suggestions.append({
                     "type": "question",
                     "priority": "medium",
-                    "icon": "âœ‚️",
+                    "icon": "✂️",
                     "title": "Remove filler words",
                     "description": f"Words like '{', '.join(found_fillers[:2])}' can be removed",
                     "potential_savings": f"~{len(found_fillers) * 3} tokens",
@@ -501,7 +501,7 @@ class CostTracker:
                     "priority": "warning",
                     "icon": "💰",
                     "title": "High token usage",
-                    "description": f"This query uses ~{total_tokens} tokens (â‰ˆ${round(total_tokens/1000000*12.5, 4)})",
+                    "description": f"This query uses ~{total_tokens} tokens (≈${round(total_tokens/1000000*12.5, 4)})",
                     "potential_savings": "Break complex questions into smaller ones"
                 })
         
@@ -832,7 +832,7 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
                 "metadata": {"chunk_index": i, "source_url": url}
             })
         
-        print(f"âœ… Unstructured HTML: {len(elements)} elements â†’ {len(chunks_with_metadata)} chunks")
+        print(f"✅ Unstructured HTML: {len(elements)} elements → {len(chunks_with_metadata)} chunks")
         
         return full_text, chunks_with_metadata, "unstructured"
         
@@ -939,7 +939,17 @@ async def fetch_page_with_playwright(url: str, wait_time: int = 5000, scroll: bo
             
             await browser.close()
             
-            await log_progress(f"âœ… Playwright fetched {len(html_content):,} bytes from {url[:50]}")
+            # Check if page is too large to process
+            MAX_HTML_SIZE = 15 * 1024 * 1024  # 15 MB limit
+            content_size = len(html_content)
+            
+            await log_progress(f"✅ Playwright fetched {content_size:,} bytes from {url[:50]}")
+            
+            if content_size > MAX_HTML_SIZE:
+                size_mb = content_size / (1024 * 1024)
+                await log_progress(f"⚠️ Page too large ({size_mb:.1f} MB). Max: 15 MB. Try uploading a PDF/CSV instead.")
+                raise Exception(f"Page size ({size_mb:.1f} MB) exceeds limit (15 MB). Please upload a PDF/CSV instead.")
+            
             return html_content
             
     except Exception as e:
@@ -1112,9 +1122,9 @@ def get_full_documents_by_ids(doc_ids: List[str]) -> List[dict]:
                 if content_hash not in seen_content_hashes:
                     documents.append(doc)
                     seen_content_hashes.add(content_hash)
-                    print(f"âœ… Loaded unique document: {doc.get('metadata', {}).get('title', doc_id)[:50]}")
+                    print(f"✅ Loaded unique document: {doc.get('metadata', {}).get('title', doc_id)[:50]}")
                 else:
-                    print(f"â­️ Skipping duplicate content: {doc.get('metadata', {}).get('title', doc_id)[:50]}")
+                    print(f"⭐️ Skipping duplicate content: {doc.get('metadata', {}).get('title', doc_id)[:50]}")
                 
                 seen_ids.add(doc_id)
     
@@ -1208,7 +1218,7 @@ def rerank_results(query: str, documents: List[dict], top_n: int = 5, source: st
                     seen_content.add(content_hash)
         
         if len(unique_docs) < len(documents):
-            print(f"🔍„ Deduplicated: {len(documents)} â†’ {len(unique_docs)} documents before reranking")
+            print(f"🔍 Deduplicated: {len(documents)} → {len(unique_docs)} documents before reranking")
         
         documents = unique_docs
         
@@ -1278,7 +1288,7 @@ def rewrite_query_with_llm(query: str) -> List[str]:
         if query not in variations:
             variations.insert(0, query)
         
-        print(f"🧠 LLM Query Rewrite: '{query}' â†’ {variations}")
+        print(f"🧠 LLM Query Rewrite: '{query}' → {variations}")
         return variations[:5]  # Max 5 variations
         
     except Exception as e:
@@ -1338,7 +1348,7 @@ def multi_query_search(query: str, top_k: int = 10, source_filter: dict = None) 
     # Sort by score and return top results
     sorted_results = sorted(all_results.values(), key=lambda x: x['score'], reverse=True)
     
-    print(f"🔍 Multi-query search: {len(query_variations)} variations â†’ {len(sorted_results)} unique results")
+    print(f"🔍 Multi-query search: {len(query_variations)} variations → {len(sorted_results)} unique results")
     
     return sorted_results[:top_k]
 
@@ -1399,7 +1409,7 @@ def hybrid_search(query: str, top_k: int = 10, source_filter: dict = None, track
             
             is_negative = any(p in memory_answer.lower() or p in memory_text.lower() for p in negative_patterns)
             if is_negative:
-                print(f"â­️ Skipping negative memory result: {memory_id}")
+                print(f"⭐️ Skipping negative memory result: {memory_id}")
                 continue  # Skip this memory result
             
             combined[memory_id] = {
@@ -1584,7 +1594,7 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
             content_hash = hash(content_preview)
             
             if content_hash in seen_chunk_content:
-                print(f"â­️ Skipping duplicate chunk content: {chunk_data['title'][:40]}")
+                print(f"⭐️ Skipping duplicate chunk content: {chunk_data['title'][:40]}")
                 continue
             
             seen_chunk_content.add(content_hash)
@@ -1713,12 +1723,12 @@ def save_to_memory(question: str, answer: str, user_id: str):
     answer_lower = answer.lower()
     for pattern in negative_patterns:
         if pattern in answer_lower:
-            print(f"â­️ Skipping memory save - negative answer detected: '{pattern[:30]}...'")
+            print(f"⭐️ Skipping memory save - negative answer detected: '{pattern[:30]}...'")
             return  # Don't save this to memory
     
     # Also skip very short answers (likely not useful)
     if len(answer) < 50:
-        print(f"â­️ Skipping memory save - answer too short ({len(answer)} chars)")
+        print(f"⭐️ Skipping memory save - answer too short ({len(answer)} chars)")
         return
     
     memory_text = f"Question: {question}\nAnswer: {answer}"
@@ -1736,7 +1746,7 @@ def save_to_memory(question: str, answer: str, user_id: str):
             "text": memory_text
         }
     }])
-    print(f"âœ… Saved to memory: {question[:50]}...")
+    print(f"✅ Saved to memory: {question[:50]}...")
 
 def extract_metadata(text: str, source_type: str):
     prompt = f"""Analyze the following {source_type} content and extract metadata.
@@ -1973,7 +1983,7 @@ def ingest_with_unstructured(chunks_with_metadata: List[dict], full_text: str, s
             avg_chunk_size=round(len(full_text) / len(chunks_with_metadata)) if chunks_with_metadata else 0
         )
         
-        chunker_emoji = "🔍§" if chunker_type == "unstructured" else ("🧠" if chunker_type == "semantic" else "📁")
+        chunker_emoji = "🔍" if chunker_type == "unstructured" else ("🧠" if chunker_type == "semantic" else "📁")
         print(f"📦 Created {len(chunks_with_metadata)} chunks using {chunker_emoji} {chunker_type} chunker")
         print(f"📊 Element types: {element_type_counts}")
         
@@ -2108,7 +2118,7 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
         "domain": domain_name
     }, images=images)
     
-    yield progress_event("chunking", 45, "âœ‚️ Creating semantic chunks...")
+    yield progress_event("chunking", 45, "✂️ Creating semantic chunks...")
     
     chunks, chunker_type = smart_chunk_text(full_text)
     total_chunks = len(chunks)
@@ -2148,9 +2158,9 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
     try:
         print(f"🚀 Starting batch embedding for {total_chunks} chunks...")
         vectors = embeddings.embed_documents(chunks)
-        print(f"âœ… Batch embedding complete: {len(vectors)} vectors")
+        print(f"✅ Batch embedding complete: {len(vectors)} vectors")
         
-        yield progress_event("embedding_done", 75, f"âœ… Embedded {len(vectors)} chunks in one batch!")
+        yield progress_event("embedding_done", 75, f"✅ Embedded {len(vectors)} chunks in one batch!")
         
     except Exception as e:
         print(f"âŒ Batch embedding failed: {e}")
@@ -2184,7 +2194,7 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
     
     # Include chunker type in done message
     chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
-    yield done_event(f"âœ… Ingested with {total_chunks} chunks {chunker_emoji}", total_chunks, chunker_type=chunker_type, images_count=img_count)
+    yield done_event(f"✅ Ingested with {total_chunks} chunks {chunker_emoji}", total_chunks, chunker_type=chunker_type, images_count=img_count)
 
 def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_text: str, source: str, doc_type: str, file_path: str, metadata: dict, chunker_type: str = "unstructured", images: List[dict] = None):
     """Generator that yields progress updates during Unstructured ingestion - with BATCH embedding"""
@@ -2213,7 +2223,7 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
     total_chunks = len(chunks_with_metadata)
     element_summary = ", ".join([f"{v} {k}" for k, v in element_type_counts.items()])
     img_count = len(images) if images else 0
-    yield progress_event("chunking", 45, f"🔍§ Unstructured created {total_chunks} chunks ({element_summary})", 
+    yield progress_event("chunking", 45, f"🔍 Unstructured created {total_chunks} chunks ({element_summary})", 
                         chunker_type=chunker_type, element_types=element_type_counts)
     
     # Prepare all chunks first
@@ -2264,9 +2274,9 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
         # Use embed_documents for batch embedding (single API call!)
         print(f"🚀 Starting batch embedding for {len(plain_chunks)} chunks...")
         vectors = embeddings.embed_documents(plain_chunks)
-        print(f"âœ… Batch embedding complete: {len(vectors)} vectors")
+        print(f"✅ Batch embedding complete: {len(vectors)} vectors")
         
-        yield progress_event("embedding_done", 75, f"âœ… Embedded {len(vectors)} chunks in one batch!")
+        yield progress_event("embedding_done", 75, f"✅ Embedded {len(vectors)} chunks in one batch!")
         
     except Exception as e:
         print(f"âŒ Batch embedding failed: {e}")
@@ -2301,11 +2311,11 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
     yield progress_event("bm25", 97, "📁š Adding to BM25 index...")
     add_to_bm25_index(plain_chunks, metadata_list)
     
-    print(f"📦 Created {len(plain_chunks)} chunks using 🔍§ {chunker_type} chunker")
+    print(f"📦 Created {len(plain_chunks)} chunks using 🔍 {chunker_type} chunker")
     print(f"📊 Element types: {element_type_counts}")
     
     yield done_event(
-        f"âœ… Ingested with {len(plain_chunks)} chunks 🔍§ ({element_summary})", 
+        f"✅ Ingested with {len(plain_chunks)} chunks 🔍 ({element_summary})", 
         len(plain_chunks), 
         chunker_type=chunker_type, 
         element_types=element_type_counts,
@@ -2350,8 +2360,8 @@ async def scrape_website_stream(url: str):
             
             # Use Unstructured.io if available
             if UNSTRUCTURED_AVAILABLE:
-                yield progress_event("unstructured", 28, "🔍§ Starting Unstructured.io smart parsing...")
-                yield progress_event("unstructured_parse", 32, "🔍§ Detecting tables, text blocks, headers...")
+                yield progress_event("unstructured", 28, "🔍 Starting Unstructured.io smart parsing...")
+                yield progress_event("unstructured_parse", 32, "🔍 Detecting tables, text blocks, headers...")
                 
                 full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, url)
                 
@@ -2366,7 +2376,7 @@ async def scrape_website_stream(url: str):
                     element_types[et] = element_types.get(et, 0) + 1
                 element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                 
-                yield progress_event("unstructured_done", 38, f"🔍§ ✓ Found {len(chunks_with_metadata)} chunks ({element_summary})")
+                yield progress_event("unstructured_done", 38, f"🔍 ✓ Found {len(chunks_with_metadata)} chunks ({element_summary})")
                 
                 yield progress_event("metadata", 40, "📋 Extracting metadata...")
                 metadata = extract_metadata(full_text[:3000], "website")
@@ -2484,7 +2494,7 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                     # Parse content using Unstructured if available
                     if UNSTRUCTURED_AVAILABLE:
                         yield progress_event("parsing", overall_progress, 
-                            f"🔍§ [{page_num}/{max_pages}] Parsing with Unstructured.io...")
+                            f"🔍 [{page_num}/{max_pages}] Parsing with Unstructured.io...")
                         
                         full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, current_url)
                         
@@ -2502,7 +2512,7 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                             element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                             
                             yield progress_event("page_done", overall_progress,
-                                f"✓ Page {page_num}: {chunks} chunks 🔍§ ({element_summary}), {len(images)} images",
+                                f"✓ Page {page_num}: {chunks} chunks 🔍 ({element_summary}), {len(images)} images",
                                 page_url=current_url, page_chunks=chunks, page_images=len(images), chunker_type=chunker_type)
                     else:
                         # Fallback to BeautifulSoup
@@ -2531,10 +2541,10 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                     continue
             
             # Final message with indicators
-            unstructured_indicator = " 🔍§" if UNSTRUCTURED_AVAILABLE else ""
+            unstructured_indicator = " 🔍" if UNSTRUCTURED_AVAILABLE else ""
             playwright_indicator = " 🎭" if used_playwright else ""
             yield done_event(
-                f"âœ… Scraped {len(pages_scraped)} pages with {total_chunks} chunks{unstructured_indicator}{playwright_indicator}, {total_images} images",
+                f"✅ Scraped {len(pages_scraped)} pages with {total_chunks} chunks{unstructured_indicator}{playwright_indicator}, {total_images} images",
                 total_chunks,
                 pages_scraped=pages_scraped,
                 total_pages=len(pages_scraped),
@@ -2804,7 +2814,7 @@ def unstructured_status():
     return {
         "unstructured_available": UNSTRUCTURED_AVAILABLE,
         "playwright_available": PLAYWRIGHT_AVAILABLE,
-        "message": "âœ… Unstructured.io is loaded and ready" if UNSTRUCTURED_AVAILABLE else "⚠️ Unstructured.io is not available, using fallback parsing",
+        "message": "✅ Unstructured.io is loaded and ready" if UNSTRUCTURED_AVAILABLE else "⚠️ Unstructured.io is not available, using fallback parsing",
         "capabilities": {
             "html_tables": UNSTRUCTURED_AVAILABLE,
             "pdf_structure": UNSTRUCTURED_AVAILABLE,
@@ -3733,7 +3743,7 @@ async def upload_file(file: UploadFile = File(...)):
             images = extract_images_from_pdf(tmp_path, doc_id)
             
             if UNSTRUCTURED_AVAILABLE:
-                print(f"🔍§ Using Unstructured.io for PDF: {file.filename}")
+                print(f"🔍 Using Unstructured.io for PDF: {file.filename}")
                 try:
                     chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "pdf")
                     if chunks_with_metadata:
@@ -3745,7 +3755,7 @@ async def upload_file(file: UploadFile = File(...)):
                         )
                         element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                         os.unlink(tmp_path)
-                        return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {num_chunks} chunks 🔍§ ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔍 ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
                 except Exception as e:
                     print(f"⚠️ Unstructured PDF failed: {e}, using fallback")
             
@@ -3756,7 +3766,7 @@ async def upload_file(file: UploadFile = File(...)):
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata, images=images)
             chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== TXT ====================
         elif suffix == ".txt":
@@ -3767,7 +3777,7 @@ async def upload_file(file: UploadFile = File(...)):
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata)
             chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== DOCX ====================
         elif suffix == ".docx":
@@ -3775,7 +3785,7 @@ async def upload_file(file: UploadFile = File(...)):
             images = extract_images_from_docx(tmp_path, doc_id)
             
             if UNSTRUCTURED_AVAILABLE:
-                print(f"🔍§ Using Unstructured.io for DOCX: {file.filename}")
+                print(f"🔍 Using Unstructured.io for DOCX: {file.filename}")
                 try:
                     chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "docx")
                     if chunks_with_metadata:
@@ -3787,7 +3797,7 @@ async def upload_file(file: UploadFile = File(...)):
                         )
                         element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                         os.unlink(tmp_path)
-                        return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {num_chunks} chunks 🔍§ ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔍 ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
                 except Exception as e:
                     print(f"⚠️ Unstructured DOCX failed: {e}, using fallback")
             
@@ -3798,12 +3808,12 @@ async def upload_file(file: UploadFile = File(...)):
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata, images=images)
             chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== XLSX ====================
         elif suffix in [".xlsx", ".xls"]:
             if UNSTRUCTURED_AVAILABLE:
-                print(f"🔍§ Using Unstructured.io for Excel: {file.filename}")
+                print(f"🔍 Using Unstructured.io for Excel: {file.filename}")
                 try:
                     chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "xlsx")
                     if chunks_with_metadata:
@@ -3815,7 +3825,7 @@ async def upload_file(file: UploadFile = File(...)):
                         )
                         element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                         os.unlink(tmp_path)
-                        return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {num_chunks} chunks 🔍§ ({element_summary})", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔍 ({element_summary})", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
                 except Exception as e:
                     print(f"⚠️ Unstructured Excel failed: {e}, using fallback")
             
@@ -3833,7 +3843,55 @@ async def upload_file(file: UploadFile = File(...)):
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "spreadsheet", file_path, metadata)
             chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+        
+        # ==================== CSV ====================
+        elif suffix == ".csv":
+            import csv
+            print(f"📊 Processing CSV file: {file.filename}")
+            
+            full_text = ""
+            try:
+                # Try to detect encoding
+                with open(tmp_path, 'rb') as f:
+                    raw_data = f.read()
+                    # Try UTF-8 first, then fallback to latin-1
+                    try:
+                        content = raw_data.decode('utf-8')
+                    except:
+                        content = raw_data.decode('latin-1')
+                
+                # Parse CSV
+                import io
+                reader = csv.reader(io.StringIO(content))
+                rows = list(reader)
+                
+                if rows:
+                    # Get headers
+                    headers = rows[0] if rows else []
+                    full_text = f"CSV File: {file.filename}\n"
+                    full_text += f"Columns: {', '.join(headers)}\n\n"
+                    
+                    # Format as readable table
+                    for i, row in enumerate(rows):
+                        if i == 0:
+                            full_text += "| " + " | ".join(row) + " |\n"
+                            full_text += "|" + "|".join(["---" for _ in row]) + "|\n"
+                        else:
+                            full_text += "| " + " | ".join(row) + " |\n"
+                    
+                    print(f"📊 CSV parsed: {len(rows)} rows, {len(headers)} columns")
+                
+            except Exception as csv_error:
+                print(f"⚠️ CSV parsing error: {csv_error}, reading as plain text")
+                with open(tmp_path, 'r', errors='ignore') as f:
+                    full_text = f.read()
+            
+            metadata = extract_metadata(full_text[:3000], "spreadsheet")
+            chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "spreadsheet", file_path, metadata)
+            chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
+            os.unlink(tmp_path)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== PPTX ====================
         elif suffix == ".pptx":
@@ -3841,7 +3899,7 @@ async def upload_file(file: UploadFile = File(...)):
             images = extract_images_from_pptx(tmp_path, doc_id)
             
             if UNSTRUCTURED_AVAILABLE:
-                print(f"🔍§ Using Unstructured.io for PPTX: {file.filename}")
+                print(f"🔍 Using Unstructured.io for PPTX: {file.filename}")
                 try:
                     chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "pptx")
                     if chunks_with_metadata:
@@ -3853,7 +3911,7 @@ async def upload_file(file: UploadFile = File(...)):
                         )
                         element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                         os.unlink(tmp_path)
-                        return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {num_chunks} chunks 🔍§ ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔍 ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
                 except Exception as e:
                     print(f"⚠️ Unstructured PPTX failed: {e}, using fallback")
             
@@ -3869,7 +3927,7 @@ async def upload_file(file: UploadFile = File(...)):
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "presentation", file_path, metadata, images=images)
             chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== Audio/Video ====================
         elif suffix in [".mp4", ".mp3", ".wav", ".m4a", ".webm", ".avi", ".mov"]:
@@ -3889,7 +3947,7 @@ async def upload_file(file: UploadFile = File(...)):
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "video", file_path, metadata)
             chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"âœ… Transcribed {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"✅ Transcribed {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== Images (Enhanced Prompt) ====================
         elif suffix in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
@@ -3945,7 +4003,7 @@ Extract all text and data from the image:"""
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "image", file_path, metadata)
             chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"âœ… Processed {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"✅ Processed {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         else:
             os.unlink(tmp_path)
@@ -3974,7 +4032,7 @@ def scrape_website(request: UrlRequest):
         
         # Use Unstructured.io for smart parsing
         if UNSTRUCTURED_AVAILABLE:
-            print(f"🔍§ Using Unstructured.io for {url}")
+            print(f"🔍 Using Unstructured.io for {url}")
             full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, url)
             
             if not full_text or not chunks_with_metadata:
@@ -3991,7 +4049,7 @@ def scrape_website(request: UrlRequest):
             
             return IngestResponse(
                 success=True, 
-                message=f"âœ… Scraped {domain} with {num_chunks} chunks 🔍§ ({element_summary}), {len(images)} images", 
+                message=f"✅ Scraped {domain} with {num_chunks} chunks 🔍 ({element_summary}), {len(images)} images", 
                 chunks=num_chunks, 
                 chunker_type=chunker_type,
                 element_types=element_types
@@ -4014,7 +4072,7 @@ def scrape_website(request: UrlRequest):
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, url, "website", "", metadata, images=images)
             chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
             
-            return IngestResponse(success=True, message=f"âœ… Scraped {domain} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"✅ Scraped {domain} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
     
     except Exception as e:
         return IngestResponse(success=False, message=str(e))
@@ -4223,7 +4281,7 @@ def scrape_website_recursive(request: RecursiveScrapeRequest):
                 total_chunks += chunks
                 pages_scraped.append(current_url)
                 chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
-                print(f"âœ… Scraped: {current_url} ({chunks} chunks {chunker_emoji}, {len(images)} images)")
+                print(f"✅ Scraped: {current_url} ({chunks} chunks {chunker_emoji}, {len(images)} images)")
             except Exception as e:
                 print(f"Error ingesting {current_url}: {e}")
                 continue
@@ -4247,7 +4305,7 @@ def scrape_website_recursive(request: RecursiveScrapeRequest):
         
         return RecursiveScrapeResponse(
             success=True,
-            message=f"âœ… Scraped {len(pages_scraped)} pages from {domain} with {total_chunks} total chunks",
+            message=f"✅ Scraped {len(pages_scraped)} pages from {domain} with {total_chunks} total chunks",
             total_pages=len(pages_scraped),
             total_chunks=total_chunks,
             pages_scraped=pages_scraped
@@ -4288,7 +4346,7 @@ def process_youtube(request: UrlRequest):
         chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, url, "youtube", "", metadata)
         chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
         
-        return IngestResponse(success=True, message=f"âœ… Processed YouTube with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+        return IngestResponse(success=True, message=f"✅ Processed YouTube with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
     
     except Exception as e:
         return IngestResponse(success=False, message=str(e))
@@ -5181,7 +5239,7 @@ Simply COPY the exact line like: ![Screenshot 1](/doc-images/xxx.jpeg)
 Place screenshots after the relevant step they illustrate.
 
 Response:"""
-            print(f"âœ… Prompt reduced to ~{len(prompt) // 4} tokens")
+            print(f"✅ Prompt reduced to ~{len(prompt) // 4} tokens")
     
     # Start generate step tracking
     if tracker:
@@ -5358,7 +5416,7 @@ async def export_to_word(request: ExportRequest):
                 filename = img_url.replace('/doc-images/', '')
                 local_path = os.path.join(DOC_IMAGES_FOLDER, filename)
                 print(f"📁 Local path: {local_path}")
-                print(f"âœ… File exists: {os.path.exists(local_path)}")
+                print(f"✅ File exists: {os.path.exists(local_path)}")
                 
                 if os.path.exists(local_path):
                     with open(local_path, 'rb') as f:
@@ -5379,7 +5437,7 @@ async def export_to_word(request: ExportRequest):
             
             if image_data:
                 # Convert to PNG using PIL for compatibility with python-docx
-                print(f"🔍„ Converting image to PNG...")
+                print(f"🔍 Converting image to PNG...")
                 pil_img = PILImage.open(io.BytesIO(image_data))
                 
                 # Convert to RGB if necessary
@@ -5399,7 +5457,7 @@ async def export_to_word(request: ExportRequest):
                 png_buffer = io.BytesIO()
                 pil_img.save(png_buffer, format='PNG')
                 png_buffer.seek(0)
-                print(f"âœ… Converted to PNG: {png_buffer.getbuffer().nbytes} bytes")
+                print(f"✅ Converted to PNG: {png_buffer.getbuffer().nbytes} bytes")
                 return png_buffer
                 
         except Exception as e:
@@ -5440,7 +5498,7 @@ async def export_to_word(request: ExportRequest):
                     try:
                         print(f"📁Ž Adding picture to Word doc: {img_url}")
                         doc.add_picture(image_stream, width=Inches(5))
-                        print(f"âœ… Picture added successfully!")
+                        print(f"✅ Picture added successfully!")
                         
                         # Add caption
                         if alt_text:

@@ -2062,9 +2062,9 @@
                         <h3>📄 Upload Files</h3>
                         <div class="upload-area" onclick="document.getElementById('file-input').click()">
                             <div class="upload-icon">📁</div>
-                            <div class="upload-text">Click or drag files<br>(PDF, Word, Excel, PPT, Video, Images)</div>
+                            <div class="upload-text">Click or drag files<br>(PDF, Word, Excel, CSV, PPT, Video, Images)</div>
                         </div>
-                        <input type="file" id="file-input" accept=".pdf,.txt,.docx,.xlsx,.xls,.pptx,.mp4,.mp3,.wav,.m4a,.mov,.avi,.webm,.jpg,.jpeg,.png,.gif,.webp" onchange="uploadFile(this.files[0])">
+                        <input type="file" id="file-input" accept=".pdf,.txt,.csv,.docx,.xlsx,.xls,.pptx,.mp4,.mp3,.wav,.m4a,.mov,.avi,.webm,.jpg,.jpeg,.png,.gif,.webp" onchange="uploadFile(this.files[0])">
                         <div class="status" id="upload-status"></div>
                         
                         <!-- Progress Bar for Upload -->
@@ -2691,7 +2691,7 @@
         }
 
         function buildSourcesHtml(sources, content = '') {
-            let html = '<div class="sources"><div class="sources-title">📁š Sources</div><ul>';
+            let html = '<div class="sources"><div class="sources-title">📁 Sources</div><ul>';
             sources.forEach(source => {
                 const icon = source.type === 'youtube' ? '🎬' : 
                             source.type === 'website' ? '🌐' : 
@@ -2699,7 +2699,7 @@
                             source.type === 'image' ? '🖼ï¸' :
                             source.type === 'memory' ? '🧠' :
                             source.type === 'spreadsheet' ? '📊' :
-                            source.type === 'presentation' ? '📁½ï¸' : '📄';
+                            source.type === 'presentation' ? '🎬' : '📄';
                 
                 const isWebLink = source.source && source.source.startsWith('http');
                 let linkHtml = isWebLink 
@@ -2784,11 +2784,11 @@
                         </div>
                         <div class="token-stats">
                             <div class="stat-row">
-                                <span>📁¥ Input tokens:</span>
+                                <span>📥 Input tokens:</span>
                                 <span>${tokenInfo.input_tokens.toLocaleString()}</span>
                             </div>
                             <div class="stat-row">
-                                <span>📁¤ Output tokens:</span>
+                                <span>📤 Output tokens:</span>
                                 <span>${tokenInfo.output_tokens.toLocaleString()}</span>
                             </div>
                             <div class="stat-row total">
@@ -3428,7 +3428,7 @@
                 suggestions.push({
                     type: 'context',
                     priority: 'info',
-                    icon: '📁š',
+                    icon: '📁',
                     title: 'Use specific keywords',
                     description: 'More specific questions retrieve smaller, more relevant context.',
                     savings: 'Up to 50% context reduction'
