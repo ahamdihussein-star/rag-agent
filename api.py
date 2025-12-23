@@ -3850,12 +3850,10 @@ async def upload_file(file: UploadFile = File(...)):
             import csv
             print(f"📊 Processing CSV file: {file.filename}")
             
-            full_text = ""
             try:
                 # Try to detect encoding
                 with open(tmp_path, 'rb') as f:
                     raw_data = f.read()
-                    # Try UTF-8 first, then fallback to latin-1
                     try:
                         content = raw_data.decode('utf-8')
                     except:
@@ -3866,32 +3864,108 @@ async def upload_file(file: UploadFile = File(...)):
                 reader = csv.reader(io.StringIO(content))
                 rows = list(reader)
                 
-                if rows:
-                    # Get headers
-                    headers = rows[0] if rows else []
-                    full_text = f"CSV File: {file.filename}\n"
-                    full_text += f"Columns: {', '.join(headers)}\n\n"
+                if not rows:
+                    os.unlink(tmp_path)
+                    return IngestResponse(success=False, message="CSV file is empty")
+                
+                headers = rows[0]
+                data_rows = rows[1:]
+                
+                print(f"📊 CSV parsed: {len(data_rows)} data rows, {len(headers)} columns")
+                
+                # Create chunks of ~100 rows each (to stay under Pinecone's 40KB metadata limit)
+                ROWS_PER_CHUNK = 100
+                chunks_data = []
+                
+                for i in range(0, len(data_rows), ROWS_PER_CHUNK):
+                    chunk_rows = data_rows[i:i + ROWS_PER_CHUNK]
                     
-                    # Format as readable table
-                    for i, row in enumerate(rows):
-                        if i == 0:
-                            full_text += "| " + " | ".join(row) + " |\n"
-                            full_text += "|" + "|".join(["---" for _ in row]) + "|\n"
-                        else:
-                            full_text += "| " + " | ".join(row) + " |\n"
+                    # Create markdown table for this chunk
+                    chunk_text = f"## {file.filename} (Rows {i+1}-{i+len(chunk_rows)})\n\n"
+                    chunk_text += "| " + " | ".join(headers) + " |\n"
+                    chunk_text += "|" + "|".join(["---" for _ in headers]) + "|\n"
                     
-                    print(f"📊 CSV parsed: {len(rows)} rows, {len(headers)} columns")
+                    for row in chunk_rows:
+                        # Truncate very long cell values
+                        truncated_row = [str(cell)[:100] if cell else "" for cell in row]
+                        chunk_text += "| " + " | ".join(truncated_row) + " |\n"
+                    
+                    chunks_data.append({
+                        "text": chunk_text,
+                        "row_start": i + 1,
+                        "row_end": i + len(chunk_rows)
+                    })
+                
+                print(f"📊 Created {len(chunks_data)} chunks from CSV")
+                
+                # Generate embeddings and upsert to Pinecone
+                vectors_to_upsert = []
+                doc_id = f"csv_{uuid.uuid4().hex[:8]}"
+                
+                # Batch embed all chunks
+                texts_to_embed = [c["text"] for c in chunks_data]
+                
+                print(f"🚀 Starting batch embedding for {len(texts_to_embed)} CSV chunks...")
+                embeddings = embeddings_model.embed_documents(texts_to_embed)
+                print(f"✅ Batch embedding complete: {len(embeddings)} vectors")
+                
+                for idx, (chunk_data, embedding) in enumerate(zip(chunks_data, embeddings)):
+                    chunk_id = f"{doc_id}_chunk_{idx}"
+                    
+                    # Keep metadata small - truncate content preview
+                    content_preview = chunk_data["text"][:500] + "..." if len(chunk_data["text"]) > 500 else chunk_data["text"]
+                    
+                    metadata = {
+                        "content": content_preview,
+                        "source": file_path,
+                        "title": f"{file.filename} (Rows {chunk_data['row_start']}-{chunk_data['row_end']})",
+                        "type": "spreadsheet",
+                        "chunk_index": idx,
+                        "row_start": chunk_data["row_start"],
+                        "row_end": chunk_data["row_end"],
+                        "total_chunks": len(chunks_data),
+                        "columns": ", ".join(headers[:10])  # First 10 column names only
+                    }
+                    
+                    vectors_to_upsert.append({
+                        "id": chunk_id,
+                        "values": embedding,
+                        "metadata": metadata
+                    })
+                    
+                    # Also add to BM25 index
+                    bm25_documents[chunk_id] = {
+                        "content": chunk_data["text"][:2000],  # Limit BM25 content too
+                        "source": file_path,
+                        "title": metadata["title"],
+                        "type": "spreadsheet"
+                    }
+                
+                # Upsert to Pinecone in batches
+                BATCH_SIZE = 50
+                for i in range(0, len(vectors_to_upsert), BATCH_SIZE):
+                    batch = vectors_to_upsert[i:i + BATCH_SIZE]
+                    index.upsert(vectors=batch)
+                
+                print(f"✅ Upserted {len(vectors_to_upsert)} vectors to Pinecone")
+                
+                # Rebuild BM25 index
+                rebuild_bm25_index()
+                
+                os.unlink(tmp_path)
+                return IngestResponse(
+                    success=True, 
+                    message=f"✅ Ingested {file.filename}: {len(data_rows)} rows → {len(chunks_data)} chunks",
+                    chunks=len(chunks_data),
+                    chunker_type="csv_chunker"
+                )
                 
             except Exception as csv_error:
-                print(f"⚠️ CSV parsing error: {csv_error}, reading as plain text")
-                with open(tmp_path, 'r', errors='ignore') as f:
-                    full_text = f.read()
-            
-            metadata = extract_metadata(full_text[:3000], "spreadsheet")
-            chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "spreadsheet", file_path, metadata)
-            chunker_emoji = "🧠" if chunker_type == "semantic" else "📁"
-            os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+                print(f"❌ CSV processing error: {csv_error}")
+                import traceback
+                traceback.print_exc()
+                os.unlink(tmp_path)
+                return IngestResponse(success=False, message=f"CSV processing failed: {str(csv_error)}")
         
         # ==================== PPTX ====================
         elif suffix == ".pptx":
