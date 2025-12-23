@@ -601,7 +601,7 @@ def root():
 def serve_frontend():
     return FileResponse("frontend/index.html")
 
-    @app.get("/admin")
+@app.get("/admin")
 def serve_admin():
     """Serve admin dashboard"""
     return FileResponse("frontend/admin.html")
