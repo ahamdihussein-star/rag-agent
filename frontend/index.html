@@ -287,7 +287,7 @@
 
         /* Streaming Cursor */
         .message-content.streaming::after {
-            content: '▊';
+            content: 'â–Š';
             animation: cursor-blink 0.8s infinite;
             color: #00d9ff;
             margin-left: 2px;
@@ -1671,15 +1671,226 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
+    
+        /* Configuration UI Styles */
+        .config-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            margin-bottom: 10px;
+        }
+        
+        .preset-btn {
+            padding: 8px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #ccc;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .preset-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .preset-btn.active {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: #00d9ff;
+            color: #00d9ff;
+        }
+        
+        .preset-btn .preset-icon {
+            font-size: 1rem;
+        }
+        
+        .custom-settings-btn {
+            padding: 8px 12px;
+            border: 1px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
+            background: transparent;
+            color: #888;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .custom-settings-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+        }
+        
+        /* Settings Modal */
+        .settings-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .settings-modal.show {
+            display: flex;
+        }
+        
+        .settings-content {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 16px;
+            padding: 24px;
+            width: 90%;
+            max-width: 500px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        
+        .settings-header h3 {
+            font-size: 1.3rem;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .close-settings {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+        
+        .close-settings:hover {
+            color: #fff;
+        }
+        
+        .setting-group {
+            margin-bottom: 24px;
+        }
+        
+        .setting-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .setting-label span {
+            font-size: 0.95rem;
+            color: #ccc;
+        }
+        
+        .setting-value {
+            font-size: 0.9rem;
+            color: #00d9ff;
+            font-weight: 600;
+        }
+        
+        .setting-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            -webkit-appearance: none;
+            appearance: none;
+            cursor: pointer;
+        }
+        
+        .setting-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 217, 255, 0.4);
+        }
+        
+        .setting-hint {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 6px;
+        }
+        
+        .settings-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .reset-btn {
+            padding: 10px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: transparent;
+            color: #888;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .reset-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+        }
+        
+        .apply-btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            color: #000;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .apply-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+        }
+        
+        /* Current settings indicator */
+        .current-settings-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: rgba(0, 217, 255, 0.1);
+            border-radius: 12px;
+            font-size: 0.75rem;
+            color: #00d9ff;
+            margin-left: auto;
+        }
+
     </style>
 </head>
 <body>
     <!-- Conversations Sidebar -->
     <div class="conversations-sidebar">
         <div class="sidebar-header">
-            <h2>💬 Conversations</h2>
+            <h2>ðŸ’¬ Conversations</h2>
             <button class="new-chat-btn" onclick="newChat()">
-                <span>➕</span> New Chat
+                <span>âž•</span> New Chat
             </button>
         </div>
         <div class="conversations-list" id="conversations-list">
@@ -1687,10 +1898,10 @@
         </div>
         <div class="sidebar-footer">
             <a href="/monitor" class="admin-link" style="margin-bottom: 8px;">
-                <span>📊</span> Pipeline Monitor
+                <span>ðŸ“Š</span> Pipeline Monitor
             </a>
             <a href="/admin" class="admin-link">
-                <span>⚙️</span> Admin Dashboard
+                <span>âš™ï¸</span> Admin Dashboard
             </a>
         </div>
     </div>
@@ -1699,8 +1910,8 @@
     <div class="main-wrapper">
         <div class="container">
             <header>
-                <h1>🤖 RAG Agent</h1>
-                <p>AI-powered assistant with long-term memory <span id="streaming-badge" class="streaming-badge hidden">⚡ Streaming</span></p>
+                <h1>ðŸ¤– RAG Agent</h1>
+                <p>AI-powered assistant with long-term memory <span id="streaming-badge" class="streaming-badge hidden">âš¡ Streaming</span></p>
             </header>
 
             <div class="main-content">
@@ -1708,7 +1919,7 @@
                 <div class="chat-section">
                     <div class="chat-messages" id="chat-messages">
                         <div class="welcome-screen" id="welcome-screen">
-                            <div class="welcome-icon">🤖</div>
+                            <div class="welcome-icon">ðŸ¤–</div>
                             <div class="welcome-title">Welcome to RAG Agent!</div>
                             <div class="welcome-text">
                                 Start a new conversation or select a previous one from the sidebar. 
@@ -1721,42 +1932,69 @@
                         <div class="token-preview hidden" id="token-preview">
                             <div class="token-preview-header" onclick="toggleCostDetails()">
                                 <div class="token-preview-stat">
-                                    <span class="icon">📊</span>
+                                    <span class="icon">ðŸ“Š</span>
                                     <span class="value" id="preview-tokens">0</span>
                                     <span class="label">tokens</span>
                                 </div>
                                 <div class="token-preview-stat total-cost">
-                                    <span class="label">Total ≈</span>
+                                    <span class="label">Total â‰ˆ</span>
                                     <span class="value" id="preview-cost">$0.00</span>
                                 </div>
-                                <span class="expand-arrow" id="cost-expand-arrow">▼</span>
+                                <span class="expand-arrow" id="cost-expand-arrow">â–¼</span>
                             </div>
                             
                             <!-- Expandable Cost Breakdown -->
                             <div class="cost-details-panel hidden" id="cost-details-panel">
                                 <div class="cost-detail-row">
-                                    <span class="cost-label">🔢 Query Embedding</span>
+                                    <span class="cost-label">ðŸ”¢ Query Embedding</span>
                                     <span class="cost-value" id="cost-embedding">$0.000001</span>
                                 </div>
                                 <div class="cost-detail-row">
-                                    <span class="cost-label">🎯 Reranking (Cohere)</span>
+                                    <span class="cost-label">ðŸŽ¯ Reranking (Cohere)</span>
                                     <span class="cost-value" id="cost-rerank">$0.000500</span>
                                 </div>
                                 <div class="cost-detail-row">
-                                    <span class="cost-label">🤖 GPT-4o Input</span>
+                                    <span class="cost-label">ðŸ¤– GPT-4o Input</span>
                                     <span class="cost-value" id="cost-llm-input">$0.00</span>
                                 </div>
                                 <div class="cost-detail-row">
-                                    <span class="cost-label">🤖 GPT-4o Output</span>
+                                    <span class="cost-label">ðŸ¤– GPT-4o Output</span>
                                     <span class="cost-value" id="cost-llm-output">$0.00</span>
                                 </div>
                                 <div class="cost-detail-row total">
-                                    <span class="cost-label">💰 Total Estimated</span>
+                                    <span class="cost-label">ðŸ’° Total Estimated</span>
                                     <span class="cost-value" id="cost-total">$0.00</span>
                                 </div>
                             </div>
                             
-                            <button class="analyze-btn" onclick="showOptimizationModal()">💡 Optimize</button>
+                            <button class="analyze-btn" onclick="showOptimizationModal()">ðŸ’¡ Optimize</button>
+                        </div>
+                        
+                        
+                        <!-- Configuration Presets -->
+                        <div class="config-bar" id="config-bar">
+                            <button class="preset-btn active" data-preset="balanced" onclick="setPreset('balanced')">
+                                <span class="preset-icon">⭐</span>
+                                <span>Balanced</span>
+                            </button>
+                            <button class="preset-btn" data-preset="quick" onclick="setPreset('quick')">
+                                <span class="preset-icon">⚡</span>
+                                <span>Quick</span>
+                            </button>
+                            <button class="preset-btn" data-preset="deep_research" onclick="setPreset('deep_research')">
+                                <span class="preset-icon">🔬</span>
+                                <span>Deep</span>
+                            </button>
+                            <button class="preset-btn" data-preset="creative" onclick="setPreset('creative')">
+                                <span class="preset-icon">🎨</span>
+                                <span>Creative</span>
+                            </button>
+                            <button class="custom-settings-btn" onclick="openSettingsModal()">
+                                ⚙️ Custom
+                            </button>
+                            <span class="current-settings-badge" id="settings-badge">
+                                <span id="badge-temp">T:0.3</span>
+                            </span>
                         </div>
                         
                         <div class="chat-input-wrapper">
@@ -1767,7 +2005,7 @@
                             <span class="input-hint">Press Enter to send</span>
                             <label class="streaming-toggle">
                                 <input type="checkbox" id="streaming-toggle" checked>
-                                <span>⚡ Streaming</span>
+                                <span>âš¡ Streaming</span>
                             </label>
                         </div>
                     </div>
@@ -1776,9 +2014,9 @@
                 <!-- Right Sidebar -->
                 <div class="sidebar">
                     <div class="panel">
-                        <h3>📄 Upload Files</h3>
+                        <h3>ðŸ“„ Upload Files</h3>
                         <div class="upload-area" onclick="document.getElementById('file-input').click()">
-                            <div class="upload-icon">📁</div>
+                            <div class="upload-icon">ðŸ“</div>
                             <div class="upload-text">Click or drag files<br>(PDF, Word, Excel, PPT, Video, Images)</div>
                         </div>
                         <input type="file" id="file-input" accept=".pdf,.txt,.docx,.xlsx,.xls,.pptx,.mp4,.mp3,.wav,.m4a,.mov,.avi,.webm,.jpg,.jpeg,.png,.gif,.webp" onchange="uploadFile(this.files[0])">
@@ -1797,7 +2035,7 @@
                     </div>
 
                     <div class="panel">
-                        <h3>🌐 Add Website</h3>
+                        <h3>ðŸŒ Add Website</h3>
                         <div class="url-input-group">
                             <input type="url" class="url-input" id="website-input" placeholder="https://example.com/docs">
                             <button class="add-btn" onclick="addWebsite()">Add</button>
@@ -1807,7 +2045,7 @@
                         <div style="margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
                             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 10px;">
                                 <input type="checkbox" id="recursive-scrape" style="width: 18px; height: 18px; cursor: pointer;">
-                                <span style="font-size: 14px;">🔄 Scrape Subpages (Recursive)</span>
+                                <span style="font-size: 14px;">ðŸ”„ Scrape Subpages (Recursive)</span>
                             </label>
                             
                             <div id="recursive-options" style="display: none; margin-top: 10px;">
@@ -1849,7 +2087,7 @@
                                     <span id="website-progress-step" style="font-size: 13px; font-weight: 600; color: #fff;">Initializing...</span>
                                 </div>
                                 <div style="text-align: right;">
-                                    <div id="website-eta" style="font-size: 12px; color: #00ff88; font-weight: 600;">⏱️ Calculating...</div>
+                                    <div id="website-eta" style="font-size: 12px; color: #00ff88; font-weight: 600;">â±ï¸ Calculating...</div>
                                     <div id="website-progress-percent" style="font-size: 11px; color: #888;">0%</div>
                                 </div>
                             </div>
@@ -1863,7 +2101,7 @@
                             <!-- Current Action Detail -->
                             <div style="margin-top: 10px; padding: 8px 10px; background: rgba(0,217,255,0.1); border-radius: 8px; border-left: 3px solid #00d9ff;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span id="website-action-icon" style="font-size: 14px;">🌐</span>
+                                    <span id="website-action-icon" style="font-size: 14px;">ðŸŒ</span>
                                     <span id="website-progress-text" style="font-size: 11px; color: #ccc; word-break: break-all;">Starting...</span>
                                 </div>
                             </div>
@@ -1887,13 +2125,13 @@
                         
                         <!-- Pages scraped list -->
                         <div id="pages-scraped-container" style="display: none; margin-top: 10px; max-height: 150px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;">
-                            <div style="font-size: 12px; color: #10b981; margin-bottom: 8px;">📄 Pages Scraped:</div>
+                            <div style="font-size: 12px; color: #10b981; margin-bottom: 8px;">ðŸ“„ Pages Scraped:</div>
                             <div id="pages-scraped-list" style="font-size: 11px; color: #888;"></div>
                         </div>
                     </div>
 
                     <div class="panel">
-                        <h3>🎬 Add YouTube</h3>
+                        <h3>ðŸŽ¬ Add YouTube</h3>
                         <div class="url-input-group">
                             <input type="url" class="url-input" id="youtube-input" placeholder="YouTube URL">
                             <button class="add-btn" onclick="addYouTube()">Add</button>
@@ -1913,7 +2151,7 @@
                     </div>
 
                     <div class="panel">
-                        <h3>📊 Knowledge Base</h3>
+                        <h3>ðŸ“Š Knowledge Base</h3>
                         <div class="stats">
                             <div class="stat-item">
                                 <div class="stat-value" id="vector-count">-</div>
@@ -2039,12 +2277,12 @@
 
             list.innerHTML = conversations.map(conv => `
                 <div class="conversation-item ${conv.id === currentConversationId ? 'active' : ''}" onclick="loadConversation('${conv.id}')">
-                    <span class="conversation-icon">💬</span>
+                    <span class="conversation-icon">ðŸ’¬</span>
                     <div class="conversation-info">
                         <div class="conversation-title">${escapeHtml(conv.title)}</div>
                         <div class="conversation-date">${formatDate(conv.updated_at)}</div>
                     </div>
-                    <button class="conversation-delete" onclick="event.stopPropagation(); deleteConversation('${conv.id}')" title="Delete">🗑️</button>
+                    <button class="conversation-delete" onclick="event.stopPropagation(); deleteConversation('${conv.id}')" title="Delete">ðŸ—‘ï¸</button>
                 </div>
             `).join('');
         }
@@ -2121,7 +2359,7 @@
             const messagesDiv = document.getElementById('chat-messages');
             messagesDiv.innerHTML = `
                 <div class="welcome-screen" id="welcome-screen">
-                    <div class="welcome-icon">🤖</div>
+                    <div class="welcome-icon">ðŸ¤–</div>
                     <div class="welcome-title">Welcome to RAG Agent!</div>
                     <div class="welcome-text">
                         Start a new conversation or select a previous one from the sidebar. 
@@ -2172,11 +2410,11 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message bot';
             messageDiv.innerHTML = `
-                <div class="message-avatar">🤖</div>
+                <div class="message-avatar">ðŸ¤–</div>
                 <div class="message-wrapper">
                     <div class="thinking-container" id="thinking-container">
                         <div class="thinking-header">
-                            <span class="thinking-icon">🧠</span>
+                            <span class="thinking-icon">ðŸ§ </span>
                             <span class="thinking-title">Thinking...</span>
                         </div>
                         <div class="thinking-steps" id="thinking-steps"></div>
@@ -2196,17 +2434,22 @@
 
             // Tool icons mapping
             const toolIcons = {
-                'search_knowledge_base': '🔍',
-                'search_web': '🌐',
-                'list_available_sources': '📋',
-                'get_source_content': '📄',
-                'generating': '✍️'
+                'search_knowledge_base': 'ðŸ”',
+                'search_web': 'ðŸŒ',
+                'list_available_sources': 'ðŸ“‹',
+                'get_source_content': 'ðŸ“„',
+                'generating': 'âœï¸'
             };
 
             try {
+                const config = getConfigParams();
                 const params = new URLSearchParams({
                     message: message,
-                    user_id: USER_ID
+                    user_id: USER_ID,
+                    temperature: config.temperature,
+                    max_iterations: config.max_iterations,
+                    top_k: config.top_k,
+                    preset: config.preset
                 });
                 if (currentConversationId) {
                     params.append('conversation_id', currentConversationId);
@@ -2222,7 +2465,7 @@
 
                         if (data.type === 'thinking') {
                             // Show thinking step
-                            const stepIcon = toolIcons[data.step] || '💭';
+                            const stepIcon = toolIcons[data.step] || 'ðŸ’­';
                             const stepDiv = document.createElement('div');
                             stepDiv.className = 'thinking-step';
                             stepDiv.innerHTML = `
@@ -2241,11 +2484,11 @@
                                 if (spinner) {
                                     spinner.className = 'step-result';
                                     if (data.success && data.found > 0) {
-                                        spinner.innerHTML = `<span class="result-success">✓ Found ${data.found} results</span>`;
+                                        spinner.innerHTML = `<span class="result-success">âœ“ Found ${data.found} results</span>`;
                                     } else if (data.success) {
-                                        spinner.innerHTML = `<span class="result-empty">○ No results</span>`;
+                                        spinner.innerHTML = `<span class="result-empty">â—‹ No results</span>`;
                                     } else {
-                                        spinner.innerHTML = `<span class="result-error">✗ Failed</span>`;
+                                        spinner.innerHTML = `<span class="result-error">âœ— Failed</span>`;
                                     }
                                 }
                             }
@@ -2281,9 +2524,9 @@
                             thinkingContainer.classList.add('collapsed');
                             const thinkingHeader = thinkingContainer.querySelector('.thinking-header');
                             thinkingHeader.innerHTML = `
-                                <span class="thinking-icon">✓</span>
+                                <span class="thinking-icon">âœ“</span>
                                 <span class="thinking-title">Completed ${toolCalls.length} search${toolCalls.length !== 1 ? 'es' : ''}</span>
-                                <span class="thinking-toggle" onclick="this.closest('.thinking-container').classList.toggle('collapsed')">▼</span>
+                                <span class="thinking-toggle" onclick="this.closest('.thinking-container').classList.toggle('collapsed')">â–¼</span>
                             `;
                             
                             contentDiv.classList.remove('streaming');
@@ -2375,15 +2618,15 @@
         }
 
         function buildSourcesHtml(sources, content = '') {
-            let html = '<div class="sources"><div class="sources-title">📚 Sources</div><ul>';
+            let html = '<div class="sources"><div class="sources-title">ðŸ“š Sources</div><ul>';
             sources.forEach(source => {
-                const icon = source.type === 'youtube' ? '🎬' : 
-                            source.type === 'website' ? '🌐' : 
-                            source.type === 'video' ? '🎥' :
-                            source.type === 'image' ? '🖼️' :
-                            source.type === 'memory' ? '🧠' :
-                            source.type === 'spreadsheet' ? '📊' :
-                            source.type === 'presentation' ? '📽️' : '📄';
+                const icon = source.type === 'youtube' ? 'ðŸŽ¬' : 
+                            source.type === 'website' ? 'ðŸŒ' : 
+                            source.type === 'video' ? 'ðŸŽ¥' :
+                            source.type === 'image' ? 'ðŸ–¼ï¸' :
+                            source.type === 'memory' ? 'ðŸ§ ' :
+                            source.type === 'spreadsheet' ? 'ðŸ“Š' :
+                            source.type === 'presentation' ? 'ðŸ“½ï¸' : 'ðŸ“„';
                 
                 const isWebLink = source.source && source.source.startsWith('http');
                 let linkHtml = isWebLink 
@@ -2391,7 +2634,7 @@
                     : `<span>${source.title || source.source}</span>`;
                 
                 let downloadHtml = source.download_url 
-                    ? `<a href="${API_URL}${source.download_url}" class="download-btn" download>⬇️ Download</a>` 
+                    ? `<a href="${API_URL}${source.download_url}" class="download-btn" download>â¬‡ï¸ Download</a>` 
                     : '';
                 
                 html += `<li><span>${icon}</span> ${linkHtml} ${downloadHtml} <span class="score">${Math.round(source.score * 100)}%</span></li>`;
@@ -2422,8 +2665,8 @@
                 suggestionsHtml = `
                     <div class="token-suggestions">
                         <div class="suggestions-title" onclick="this.parentElement.classList.toggle('expanded')">
-                            💡 Optimization Suggestions (${tokenInfo.suggestions.length})
-                            <span class="expand-icon">▼</span>
+                            ðŸ’¡ Optimization Suggestions (${tokenInfo.suggestions.length})
+                            <span class="expand-icon">â–¼</span>
                         </div>
                         <div class="suggestions-list">
                             ${tokenInfo.suggestions.map(s => `
@@ -2432,7 +2675,7 @@
                                     <div class="suggestion-content">
                                         <div class="suggestion-title">${s.title}</div>
                                         <div class="suggestion-desc">${s.description}</div>
-                                        ${s.potential_savings ? `<div class="suggestion-savings">💰 Potential savings: ${s.potential_savings}</div>` : ''}
+                                        ${s.potential_savings ? `<div class="suggestion-savings">ðŸ’° Potential savings: ${s.potential_savings}</div>` : ''}
                                     </div>
                                 </div>
                             `).join('')}
@@ -2444,12 +2687,12 @@
             return `
                 <div class="token-info-panel">
                     <div class="token-header" onclick="this.parentElement.classList.toggle('expanded')">
-                        <span class="token-icon">📊</span>
+                        <span class="token-icon">ðŸ“Š</span>
                         <span class="token-summary">
                             <strong>${tokenInfo.total_tokens.toLocaleString()}</strong> tokens
-                            <span class="token-cost">≈ $${tokenInfo.cost.toFixed(4)}</span>
+                            <span class="token-cost">â‰ˆ $${tokenInfo.cost.toFixed(4)}</span>
                         </span>
-                        <span class="expand-icon">▼</span>
+                        <span class="expand-icon">â–¼</span>
                     </div>
                     <div class="token-details">
                         <div class="token-breakdown-visual">
@@ -2468,24 +2711,24 @@
                         </div>
                         <div class="token-stats">
                             <div class="stat-row">
-                                <span>📥 Input tokens:</span>
+                                <span>ðŸ“¥ Input tokens:</span>
                                 <span>${tokenInfo.input_tokens.toLocaleString()}</span>
                             </div>
                             <div class="stat-row">
-                                <span>📤 Output tokens:</span>
+                                <span>ðŸ“¤ Output tokens:</span>
                                 <span>${tokenInfo.output_tokens.toLocaleString()}</span>
                             </div>
                             <div class="stat-row total">
-                                <span>📊 Total:</span>
+                                <span>ðŸ“Š Total:</span>
                                 <span>${tokenInfo.total_tokens.toLocaleString()}</span>
                             </div>
                             <div class="stat-row cost">
-                                <span>💰 Cost:</span>
+                                <span>ðŸ’° Cost:</span>
                                 <span>$${tokenInfo.cost.toFixed(6)}</span>
                             </div>
                         </div>
                         <div class="token-formula">
-                            <small>📐 ${tokenInfo.formula}</small>
+                            <small>ðŸ“ ${tokenInfo.formula}</small>
                         </div>
                         ${suggestionsHtml}
                     </div>
@@ -2499,10 +2742,10 @@
             return `
                 <div class="export-section">
                     <button class="export-btn word" onclick="exportToWord('${escapedContent}')">
-                        <span>📝</span> Export to Word
+                        <span>ðŸ“</span> Export to Word
                     </button>
                     <button class="export-btn pdf" onclick="exportToPDF('${escapedContent}')">
-                        <span>📄</span> Export to PDF
+                        <span>ðŸ“„</span> Export to PDF
                     </button>
                 </div>
             `;
@@ -2525,15 +2768,15 @@
         async function exportToWord(encodedContent) {
             const btn = event.target.closest('.export-btn');
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<span>⏳</span> Generating...';
+            btn.innerHTML = '<span>â³</span> Generating...';
             btn.disabled = true;
             
             try {
                 const content = decodeURIComponent(escape(atob(encodedContent)));
                 
                 // Debug: log the content being sent
-                console.log('📝 Export to Word - Content:', content);
-                console.log('📝 Export to Word - Images in content:', content.match(/!\[([^\]]*)\]\(([^)]+)\)/g));
+                console.log('ðŸ“ Export to Word - Content:', content);
+                console.log('ðŸ“ Export to Word - Images in content:', content.match(/!\[([^\]]*)\]\(([^)]+)\)/g));
                 
                 const response = await fetch(`${API_URL}/export/word`, {
                     method: 'POST',
@@ -2570,7 +2813,7 @@
         async function exportToPDF(encodedContent) {
             const btn = event.target.closest('.export-btn');
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<span>⏳</span> Generating...';
+            btn.innerHTML = '<span>â³</span> Generating...';
             btn.disabled = true;
             
             try {
@@ -2618,7 +2861,7 @@
             const messagesDiv = document.getElementById('chat-messages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
-            const avatar = type === 'user' ? '👤' : '🤖';
+            const avatar = type === 'user' ? 'ðŸ‘¤' : 'ðŸ¤–';
             
             const textToCheck = isHtml ? text.replace(/<[^>]*>/g, '') : text;
             const rtlClass = isArabic(textToCheck) ? ' rtl' : '';
@@ -2637,7 +2880,7 @@
             const messagesDiv = document.getElementById('chat-messages');
             const typingDiv = document.createElement('div');
             typingDiv.className = 'message bot';
-            typingDiv.innerHTML = `<div class="message-avatar">🤖</div><div class="typing-indicator"><span></span><span></span><span></span></div>`;
+            typingDiv.innerHTML = `<div class="message-avatar">ðŸ¤–</div><div class="typing-indicator"><span></span><span></span><span></span></div>`;
             messagesDiv.appendChild(typingDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
             return typingDiv;
@@ -2697,18 +2940,18 @@
                         clearInterval(interval);
                         progressBar.style.width = '100%';
                         progressPercent.textContent = '100%';
-                        progressText.textContent = '✅ Complete!';
+                        progressText.textContent = 'âœ… Complete!';
                         statusDiv.className = data.success ? 'status success' : 'status error';
                         
                         // Create chunker badge
                         let chunkerBadge = '';
                         if (data.success && data.chunker_type) {
                             const isSemantic = data.chunker_type === 'semantic';
-                            chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📏'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                            chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? 'ðŸ§ ' : 'ðŸ“'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
                         }
                         statusDiv.innerHTML = data.success 
-                            ? `✅ ${data.message}${chunkerBadge}` 
-                            : `❌ ${data.message}`;
+                            ? `âœ… ${data.message}${chunkerBadge}` 
+                            : `âŒ ${data.message}`;
                         
                         if (data.success) { 
                             loadStats(); 
@@ -2720,14 +2963,14 @@
                         }, 3000);
                     } else {
                         statusDiv.className = 'status error';
-                        statusDiv.textContent = '❌ Upload failed';
+                        statusDiv.textContent = 'âŒ Upload failed';
                         progressContainer.style.display = 'none';
                     }
                 });
                 
                 xhr.addEventListener('error', () => {
                     statusDiv.className = 'status error';
-                    statusDiv.textContent = '❌ Upload failed';
+                    statusDiv.textContent = 'âŒ Upload failed';
                     progressContainer.style.display = 'none';
                 });
                 
@@ -2736,7 +2979,7 @@
                 
             } catch (error) {
                 statusDiv.className = 'status error';
-                statusDiv.textContent = '❌ Upload failed';
+                statusDiv.textContent = 'âŒ Upload failed';
                 progressContainer.style.display = 'none';
             }
         }
@@ -2773,7 +3016,7 @@
                 const maxPages = parseInt(document.getElementById('max-pages').value);
                 const samePathOnly = document.getElementById('same-path-only').checked;
                 
-                statusDiv.textContent = `🔄 Recursively scraping (max ${maxPages} pages)...`;
+                statusDiv.textContent = `ðŸ”„ Recursively scraping (max ${maxPages} pages)...`;
 
                 try {
                     const eventSource = new EventSource(
@@ -2794,19 +3037,19 @@
                             if (data.step === 'page_done' && data.page_url) {
                                 scrapedPages.push(data.page_url);
                                 pagesContainer.style.display = 'block';
-                                pagesList.innerHTML = scrapedPages.map(p => `<div style="padding: 2px 0; word-break: break-all;">• ${p}</div>`).join('');
+                                pagesList.innerHTML = scrapedPages.map(p => `<div style="padding: 2px 0; word-break: break-all;">â€¢ ${p}</div>`).join('');
                             }
                         } else if (data.type === 'done') {
                             progressBar.style.width = '100%';
                             progressPercent.textContent = '100%';
-                            progressText.textContent = '✅ Complete!';
+                            progressText.textContent = 'âœ… Complete!';
                             statusDiv.className = 'status success';
                             
                             // Add chunker badge if available
                             let chunkerBadge = '';
                             if (data.chunker_type) {
                                 const isSemantic = data.chunker_type === 'semantic';
-                                chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📏'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                                chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? 'ðŸ§ ' : 'ðŸ“'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
                             }
                             statusDiv.innerHTML = data.message + chunkerBadge;
                             input.value = '';
@@ -2819,7 +3062,7 @@
                             }, 3000);
                         } else if (data.type === 'error') {
                             statusDiv.className = 'status error';
-                            statusDiv.textContent = '❌ ' + data.message;
+                            statusDiv.textContent = 'âŒ ' + data.message;
                             progressContainer.style.display = 'none';
                             eventSource.close();
                         }
@@ -2827,14 +3070,14 @@
                     
                     eventSource.onerror = () => {
                         statusDiv.className = 'status error';
-                        statusDiv.textContent = '❌ Connection error';
+                        statusDiv.textContent = 'âŒ Connection error';
                         progressContainer.style.display = 'none';
                         eventSource.close();
                     };
                     
                 } catch (error) {
                     statusDiv.className = 'status error';
-                    statusDiv.textContent = '❌ Failed to scrape recursively';
+                    statusDiv.textContent = 'âŒ Failed to scrape recursively';
                     progressContainer.style.display = 'none';
                 }
             } else {
@@ -2854,14 +3097,14 @@
                         } else if (data.type === 'done') {
                             progressBar.style.width = '100%';
                             progressPercent.textContent = '100%';
-                            progressText.textContent = '✅ Complete!';
+                            progressText.textContent = 'âœ… Complete!';
                             statusDiv.className = 'status success';
                             
                             // Add chunker badge if available
                             let chunkerBadge = '';
                             if (data.chunker_type) {
                                 const isSemantic = data.chunker_type === 'semantic';
-                                chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📏'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                                chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? 'ðŸ§ ' : 'ðŸ“'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
                             }
                             statusDiv.innerHTML = data.message + chunkerBadge;
                             input.value = '';
@@ -2873,7 +3116,7 @@
                             }, 3000);
                         } else if (data.type === 'error') {
                             statusDiv.className = 'status error';
-                            statusDiv.textContent = '❌ ' + data.message;
+                            statusDiv.textContent = 'âŒ ' + data.message;
                             progressContainer.style.display = 'none';
                             eventSource.close();
                         }
@@ -2881,14 +3124,14 @@
                     
                     eventSource.onerror = () => {
                         statusDiv.className = 'status error';
-                        statusDiv.textContent = '❌ Connection error';
+                        statusDiv.textContent = 'âŒ Connection error';
                         progressContainer.style.display = 'none';
                         eventSource.close();
                     };
                     
                 } catch (error) {
                     statusDiv.className = 'status error';
-                    statusDiv.textContent = '❌ Failed';
+                    statusDiv.textContent = 'âŒ Failed';
                     progressContainer.style.display = 'none';
                 }
             }
@@ -2926,14 +3169,14 @@
                     } else if (data.type === 'done') {
                         progressBar.style.width = '100%';
                         progressPercent.textContent = '100%';
-                        progressText.textContent = '✅ Complete!';
+                        progressText.textContent = 'âœ… Complete!';
                         statusDiv.className = 'status success';
                         
                         // Add chunker badge if available
                         let chunkerBadge = '';
                         if (data.chunker_type) {
                             const isSemantic = data.chunker_type === 'semantic';
-                            chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📏'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
+                            chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? 'ðŸ§ ' : 'ðŸ“'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
                         }
                         statusDiv.innerHTML = data.message + chunkerBadge;
                         input.value = '';
@@ -2945,7 +3188,7 @@
                         }, 3000);
                     } else if (data.type === 'error') {
                         statusDiv.className = 'status error';
-                        statusDiv.textContent = '❌ ' + data.message;
+                        statusDiv.textContent = 'âŒ ' + data.message;
                         progressContainer.style.display = 'none';
                         eventSource.close();
                     }
@@ -2953,14 +3196,14 @@
                 
                 eventSource.onerror = () => {
                     statusDiv.className = 'status error';
-                    statusDiv.textContent = '❌ Connection error';
+                    statusDiv.textContent = 'âŒ Connection error';
                     progressContainer.style.display = 'none';
                     eventSource.close();
                 };
                 
             } catch (error) {
                 statusDiv.className = 'status error';
-                statusDiv.textContent = '❌ Failed';
+                statusDiv.textContent = 'âŒ Failed';
                 progressContainer.style.display = 'none';
             }
         }
@@ -3062,7 +3305,7 @@
                 suggestions.push({
                     type: 'question',
                     priority: 'medium',
-                    icon: '✂️',
+                    icon: 'âœ‚ï¸',
                     title: 'Remove filler words',
                     description: `Words like "${foundFillers.slice(0, 2).join('", "')}" can be removed without changing the meaning.`,
                     savings: `~${foundFillers.length * 3} tokens`
@@ -3074,7 +3317,7 @@
                 suggestions.push({
                     type: 'question',
                     priority: 'high',
-                    icon: '📝',
+                    icon: 'ðŸ“',
                     title: 'Shorten your question',
                     description: `Your question uses ${queryTokens} tokens. Try to be more concise and direct.`,
                     savings: `~${queryTokens - 30} tokens`
@@ -3088,7 +3331,7 @@
                 suggestions.push({
                     type: 'question',
                     priority: 'medium',
-                    icon: '🔄',
+                    icon: 'ðŸ”„',
                     title: 'Remove repeated words',
                     description: 'Your question contains repeated words that could be removed.',
                     savings: `~${words.length - uniqueWords.size} tokens`
@@ -3100,7 +3343,7 @@
                 suggestions.push({
                     type: 'cost',
                     priority: 'high',
-                    icon: '💰',
+                    icon: 'ðŸ’°',
                     title: 'High estimated cost',
                     description: `This query may cost ~$${totalCost.toFixed(4)}. Consider breaking it into smaller questions.`,
                     savings: 'Split into 2-3 questions'
@@ -3112,7 +3355,7 @@
                 suggestions.push({
                     type: 'context',
                     priority: 'info',
-                    icon: '📚',
+                    icon: 'ðŸ“š',
                     title: 'Use specific keywords',
                     description: 'More specific questions retrieve smaller, more relevant context.',
                     savings: 'Up to 50% context reduction'
@@ -3149,7 +3392,7 @@
             if (currentAnalysis.suggestions.length === 0) {
                 suggestionsContainer.innerHTML = `
                     <div class="no-suggestions">
-                        <div class="no-suggestions-icon">✅</div>
+                        <div class="no-suggestions-icon">âœ…</div>
                         <p>Your question looks optimized!</p>
                     </div>
                 `;
@@ -3160,7 +3403,7 @@
                         <div class="opt-suggestion-content">
                             <div class="opt-suggestion-title">${s.title}</div>
                             <div class="opt-suggestion-desc">${s.description}</div>
-                            <div class="opt-suggestion-savings">💰 Potential savings: ${s.savings}</div>
+                            <div class="opt-suggestion-savings">ðŸ’° Potential savings: ${s.savings}</div>
                         </div>
                     </div>
                 `).join('');
@@ -3182,13 +3425,151 @@
         document.getElementById('optimization-modal')?.addEventListener('click', function(e) {
             if (e.target === this) closeOptimizationModal();
         });
+    
+        // ==================== Configuration Settings ====================
+        
+        // Current configuration
+        let currentConfig = {
+            preset: 'balanced',
+            temperature: 0.3,
+            max_iterations: 12,
+            top_k: 12
+        };
+        
+        // Preset definitions
+        const PRESETS = {
+            quick: { temperature: 0.3, max_iterations: 6, top_k: 6, name: '⚡ Quick' },
+            balanced: { temperature: 0.3, max_iterations: 12, top_k: 12, name: '⭐ Balanced' },
+            deep_research: { temperature: 0.2, max_iterations: 20, top_k: 18, name: '🔬 Deep' },
+            creative: { temperature: 0.7, max_iterations: 10, top_k: 10, name: '🎨 Creative' }
+        };
+        
+        function setPreset(presetName) {
+            if (!PRESETS[presetName]) return;
+            
+            const preset = PRESETS[presetName];
+            currentConfig = {
+                preset: presetName,
+                temperature: preset.temperature,
+                max_iterations: preset.max_iterations,
+                top_k: preset.top_k
+            };
+            
+            // Update UI
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.preset === presetName) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // Update sliders to match
+            document.getElementById('temperature-slider').value = preset.temperature * 100;
+            document.getElementById('iterations-slider').value = preset.max_iterations;
+            document.getElementById('topk-slider').value = preset.top_k;
+            
+            // Update displays
+            updateSettingValue('temperature');
+            updateSettingValue('iterations');
+            updateSettingValue('topk');
+            updateSettingsBadge();
+            
+            console.log('Preset set:', presetName, currentConfig);
+        }
+        
+        function openSettingsModal() {
+            document.getElementById('settings-modal').classList.add('show');
+            
+            // Set slider values from current config
+            document.getElementById('temperature-slider').value = currentConfig.temperature * 100;
+            document.getElementById('iterations-slider').value = currentConfig.max_iterations;
+            document.getElementById('topk-slider').value = currentConfig.top_k;
+            
+            updateSettingValue('temperature');
+            updateSettingValue('iterations');
+            updateSettingValue('topk');
+        }
+        
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.remove('show');
+        }
+        
+        function updateSettingValue(type) {
+            if (type === 'temperature') {
+                const value = parseInt(document.getElementById('temperature-slider').value);
+                const temp = value / 100;
+                let label = 'Balanced';
+                if (temp <= 0.2) label = 'Very Precise';
+                else if (temp <= 0.35) label = 'Precise';
+                else if (temp <= 0.5) label = 'Balanced';
+                else if (temp <= 0.7) label = 'Creative';
+                else label = 'Very Creative';
+                document.getElementById('temp-value').textContent = label;
+            } else if (type === 'iterations') {
+                const value = parseInt(document.getElementById('iterations-slider').value);
+                document.getElementById('iterations-value').textContent = value + ' steps';
+            } else if (type === 'topk') {
+                const value = parseInt(document.getElementById('topk-slider').value);
+                document.getElementById('topk-value').textContent = value + ' sources';
+            }
+        }
+        
+        function resetSettings() {
+            setPreset('balanced');
+        }
+        
+        function applySettings() {
+            currentConfig.temperature = parseInt(document.getElementById('temperature-slider').value) / 100;
+            currentConfig.max_iterations = parseInt(document.getElementById('iterations-slider').value);
+            currentConfig.top_k = parseInt(document.getElementById('topk-slider').value);
+            currentConfig.preset = 'custom';
+            
+            // Deselect all preset buttons
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            updateSettingsBadge();
+            closeSettingsModal();
+            
+            console.log('Custom settings applied:', currentConfig);
+        }
+        
+        function updateSettingsBadge() {
+            const badge = document.getElementById('badge-temp');
+            badge.textContent = 'T:' + currentConfig.temperature.toFixed(1);
+        }
+        
+        function getConfigParams() {
+            return {
+                temperature: currentConfig.temperature,
+                max_iterations: currentConfig.max_iterations,
+                top_k: currentConfig.top_k,
+                preset: currentConfig.preset
+            };
+        }
+        
+        // Close modal when clicking outside
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('settings-modal');
+            if (e.target === modal) {
+                closeSettingsModal();
+            }
+        });
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            setPreset('balanced');
+        });
+
+
     </script>
     
     <!-- Optimization Modal -->
     <div class="optimization-modal" id="optimization-modal">
         <div class="optimization-content">
             <div class="optimization-header">
-                <span class="optimization-title">💡 Query Analysis</span>
+                <span class="optimization-title">ðŸ’¡ Query Analysis</span>
                 <button class="optimization-close" onclick="closeOptimizationModal()">&times;</button>
             </div>
             
@@ -3213,7 +3594,7 @@
             
             <div class="optimization-actions">
                 <button class="opt-btn opt-btn-cancel" onclick="closeOptimizationModal()">Edit Query</button>
-                <button class="opt-btn opt-btn-send" onclick="sendFromModal()">Send Anyway →</button>
+                <button class="opt-btn opt-btn-send" onclick="sendFromModal()">Send Anyway â†’</button>
             </div>
         </div>
     </div>
@@ -3223,6 +3604,55 @@
         <span class="image-modal-close" onclick="closeImageModal()">&times;</span>
         <img id="modalImage" src="" alt="">
         <p id="modalCaption" style="color: white; text-align: center; margin-top: 15px; font-size: 14px;"></p>
+    </div>
+
+
+    <!-- Settings Modal -->
+    <div class="settings-modal" id="settings-modal">
+        <div class="settings-content">
+            <div class="settings-header">
+                <h3>⚙️ Custom Settings</h3>
+                <button class="close-settings" onclick="closeSettingsModal()">×</button>
+            </div>
+            
+            <div class="setting-group">
+                <div class="setting-label">
+                    <span>🎨 Response Style</span>
+                    <span class="setting-value" id="temp-value">Balanced</span>
+                </div>
+                <input type="range" class="setting-slider" id="temperature-slider" 
+                       min="0" max="100" value="30" 
+                       oninput="updateSettingValue('temperature')">
+                <div class="setting-hint">Precise ← → Creative</div>
+            </div>
+            
+            <div class="setting-group">
+                <div class="setting-label">
+                    <span>🔍 Research Depth</span>
+                    <span class="setting-value" id="iterations-value">12 steps</span>
+                </div>
+                <input type="range" class="setting-slider" id="iterations-slider" 
+                       min="3" max="25" value="12" 
+                       oninput="updateSettingValue('iterations')">
+                <div class="setting-hint">Quick ← → Thorough (affects response time)</div>
+            </div>
+            
+            <div class="setting-group">
+                <div class="setting-label">
+                    <span>📚 Sources to Search</span>
+                    <span class="setting-value" id="topk-value">12 sources</span>
+                </div>
+                <input type="range" class="setting-slider" id="topk-slider" 
+                       min="3" max="25" value="12" 
+                       oninput="updateSettingValue('topk')">
+                <div class="setting-hint">Focused ← → Comprehensive</div>
+            </div>
+            
+            <div class="settings-footer">
+                <button class="reset-btn" onclick="resetSettings()">Reset to Default</button>
+                <button class="apply-btn" onclick="applySettings()">Apply Settings</button>
+            </div>
+        </div>
     </div>
 
 </body>

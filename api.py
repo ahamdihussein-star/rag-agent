@@ -23,6 +23,14 @@ import numpy as np
 from typing import List, Optional
 import asyncio
 from openai import OpenAI  # For Agentic RAG with function calling
+# Import configuration
+from config import (
+    AgentConfig, PRESET_CONFIGS, get_config, get_preset_info,
+    AGENT_SYSTEM_PROMPT, QUERY_REWRITE_PROMPT,
+    STOP_WORDS, EXPAND_BUTTON_SELECTORS, load_dynamic_domains,
+    API_PRICING, validate_temperature, validate_iterations, validate_top_k
+)
+
 
 # Unstructured.io imports for smart document parsing
 try:
@@ -34,19 +42,19 @@ try:
     from unstructured.partition.text import partition_text
     from unstructured.chunking.title import chunk_by_title
     UNSTRUCTURED_AVAILABLE = True
-    print("✅ Unstructured.io loaded successfully")
+    print("âœ… Unstructured.io loaded successfully")
 except ImportError as e:
     UNSTRUCTURED_AVAILABLE = False
-    print(f"⚠️ Unstructured.io not available: {e}. Using fallback parsing.")
+    print(f"âš ï¸ Unstructured.io not available: {e}. Using fallback parsing.")
 
 # Playwright for JavaScript-rendered pages
 try:
     from playwright.async_api import async_playwright
     PLAYWRIGHT_AVAILABLE = True
-    print("✅ Playwright loaded successfully")
+    print("âœ… Playwright loaded successfully")
 except ImportError as e:
     PLAYWRIGHT_AVAILABLE = False
-    print(f"⚠️ Playwright not available: {e}. Dynamic pages may not render fully.")
+    print(f"âš ï¸ Playwright not available: {e}. Dynamic pages may not render fully.")
 
 # Load environment variables
 load_dotenv()
@@ -64,16 +72,19 @@ openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 co = cohere.Client(os.getenv("COHERE_API_KEY"))
 
 # Semantic Chunker - splits by meaning
+# Get config for chunking settings
+_config = AgentConfig()
+
 semantic_chunker = SemanticChunker(
     embeddings=embeddings,
     breakpoint_threshold_type="percentile",
-    breakpoint_threshold_amount=70
+    breakpoint_threshold_amount=_config.semantic_threshold  # 75 for better context
 )
 
 # Fallback character-based splitter
 fallback_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200
+    chunk_size=_config.chunk_size,  # 3500 - larger chunks for better context
+    chunk_overlap=_config.chunk_overlap  # 350 - overlap to prevent context loss
 )
 
 # Folders - Use Railway Volume if available, otherwise local
@@ -88,7 +99,7 @@ os.makedirs(CONVERSATIONS_FOLDER, exist_ok=True)
 os.makedirs(DOCUMENTS_FOLDER, exist_ok=True)
 
 # FastAPI app
-app = FastAPI(title="RAG Agent API", version="2.3.0")
+app = FastAPI(title="RAG Agent API", version="3.0.0")  # Major update with configurable settings
 
 # CORS middleware
 app.add_middleware(
@@ -357,7 +368,7 @@ class CostTracker:
             "tokens": tokens,
             "cost": round(cost, 8),
             "model": model,
-            "formula": f"({tokens} ÷ 1,000,000) × ${pricing['price_per_million_tokens']}",
+            "formula": f"({tokens} Ã· 1,000,000) Ã— ${pricing['price_per_million_tokens']}",
             "text_preview": text[:200] + "..." if len(text) > 200 else text,
             "text_length": len(text)
         }
@@ -381,7 +392,7 @@ class CostTracker:
             "output_cost": round(output_cost, 8),
             "total_cost": round(total_cost, 8),
             "model": model,
-            "formula": f"Input: ({input_tokens} ÷ 1M) × ${pricing['input_price_per_million_tokens']} + Output: ({output_tokens} ÷ 1M) × ${pricing['output_price_per_million_tokens']}",
+            "formula": f"Input: ({input_tokens} Ã· 1M) Ã— ${pricing['input_price_per_million_tokens']} + Output: ({output_tokens} Ã· 1M) Ã— ${pricing['output_price_per_million_tokens']}",
             "input_preview": input_text[:300] + "..." if len(input_text) > 300 else input_text,
             "output_preview": output_text[:300] + "..." if len(output_text) > 300 else output_text
         }
@@ -451,7 +462,7 @@ class CostTracker:
                 suggestions.append({
                     "type": "question",
                     "priority": "medium",
-                    "icon": "✂️",
+                    "icon": "âœ‚ï¸",
                     "title": "Remove filler words",
                     "description": f"Words like '{', '.join(found_fillers[:2])}' can be removed",
                     "potential_savings": f"~{len(found_fillers) * 3} tokens",
@@ -466,7 +477,7 @@ class CostTracker:
                 suggestions.append({
                     "type": "question",
                     "priority": "high",
-                    "icon": "📝",
+                    "icon": "ðŸ“",
                     "title": "Shorten your question",
                     "description": f"Your question uses {question_tokens} tokens. Try to be more concise.",
                     "potential_savings": f"~{question_tokens - 30} tokens"
@@ -477,7 +488,7 @@ class CostTracker:
                 suggestions.append({
                     "type": "context",
                     "priority": "high",
-                    "icon": "📚",
+                    "icon": "ðŸ“š",
                     "title": "Large context detected",
                     "description": f"Document context is {context_tokens} tokens ({round(context_tokens/total_tokens*100)}% of total)",
                     "potential_savings": "Consider using more specific questions to retrieve smaller context"
@@ -488,9 +499,9 @@ class CostTracker:
                 suggestions.append({
                     "type": "cost",
                     "priority": "warning",
-                    "icon": "💰",
+                    "icon": "ðŸ’°",
                     "title": "High token usage",
-                    "description": f"This query uses ~{total_tokens} tokens (≈${round(total_tokens/1000000*12.5, 4)})",
+                    "description": f"This query uses ~{total_tokens} tokens (â‰ˆ${round(total_tokens/1000000*12.5, 4)})",
                     "potential_savings": "Break complex questions into smaller ones"
                 })
         
@@ -499,7 +510,7 @@ class CostTracker:
                 suggestions.append({
                     "type": "document",
                     "priority": "info",
-                    "icon": "📄",
+                    "icon": "ðŸ“„",
                     "title": "Large document",
                     "description": f"Document has ~{total_tokens} tokens",
                     "potential_savings": "Consider splitting into smaller sections if not all content is needed"
@@ -519,7 +530,7 @@ class CostTracker:
             "duration_minutes": round(duration_minutes, 2),
             "cost": round(cost, 8),
             "model": "whisper-1",
-            "formula": f"{round(duration_minutes, 2)} minutes × ${pricing['price_per_minute']}/min"
+            "formula": f"{round(duration_minutes, 2)} minutes Ã— ${pricing['price_per_minute']}/min"
         }
     
     @staticmethod
@@ -532,7 +543,7 @@ class CostTracker:
             "searches": num_searches,
             "cost": round(cost, 8),
             "model": "rerank-v3.5",
-            "formula": f"{num_searches} × ${pricing['price_per_search']}/search"
+            "formula": f"{num_searches} Ã— ${pricing['price_per_search']}/search"
         }
     
     @staticmethod
@@ -642,11 +653,14 @@ def update_cost_summary(entry: CostEntry):
 
 # ==================== Semantic Chunking ====================
 
-def smart_chunk_text(text: str, min_chunk_size: int = 100) -> tuple[List[str], str]:
+def smart_chunk_text(text: str, min_chunk_size: int = 100, config: AgentConfig = None) -> tuple[List[str], str]:
     """
-    Split text into semantic chunks.
+    Split text into semantic chunks with improved settings.
     Returns: (chunks, chunker_type) where chunker_type is 'semantic' or 'fallback'
     """
+    if config is None:
+        config = AgentConfig()
+    
     if len(text) < min_chunk_size:
         return [text], "semantic"
     
@@ -655,9 +669,10 @@ def smart_chunk_text(text: str, min_chunk_size: int = 100) -> tuple[List[str], s
         
         merged_chunks = []
         current_chunk = ""
+        max_chunk_size = config.chunk_size  # Use config value (3500)
         
         for chunk in chunks:
-            if len(current_chunk) + len(chunk) < 1500:
+            if len(current_chunk) + len(chunk) < max_chunk_size:
                 current_chunk += "\n\n" + chunk if current_chunk else chunk
             else:
                 if current_chunk:
@@ -667,7 +682,8 @@ def smart_chunk_text(text: str, min_chunk_size: int = 100) -> tuple[List[str], s
         if current_chunk:
             merged_chunks.append(current_chunk.strip())
         
-        if len(merged_chunks) < 2 and len(text) > 2000:
+        # If we got very few chunks from a large text, use fallback
+        if len(merged_chunks) < 2 and len(text) > 3000:
             return fallback_splitter.split_text(text), "fallback"
         
         return merged_chunks, "semantic"
@@ -722,9 +738,9 @@ def parse_with_unstructured(content, content_type: str = "html", source_url: str
         # Use chunk_by_title for structure-aware chunking
         chunked_elements = chunk_by_title(
             elements,
-            max_characters=1500,
-            combine_text_under_n_chars=100,
-            new_after_n_chars=1200
+            max_characters=4000,  # Larger chunks for better context
+            combine_text_under_n_chars=300,  # Combine small elements
+            new_after_n_chars=3500
         )
         
         chunks_with_metadata = []
@@ -747,18 +763,18 @@ def parse_with_unstructured(content, content_type: str = "html", source_url: str
                 "metadata": chunk_metadata
             })
         
-        print(f"📦 Unstructured created {len(chunks_with_metadata)} chunks")
+        print(f"ðŸ“¦ Unstructured created {len(chunks_with_metadata)} chunks")
         
         type_counts = {}
         for c in chunks_with_metadata:
             et = c["element_type"]
             type_counts[et] = type_counts.get(et, 0) + 1
-        print(f"📊 Element types: {type_counts}")
+        print(f"ðŸ“Š Element types: {type_counts}")
         
         return chunks_with_metadata, "unstructured"
         
     except Exception as e:
-        print(f"⚠️ Unstructured parsing failed: {e}, using fallback")
+        print(f"âš ï¸ Unstructured parsing failed: {e}, using fallback")
         if isinstance(content, str):
             chunks, chunk_type = smart_chunk_text(content)
             return [{"text": c, "element_type": "NarrativeText", "metadata": {}} for c in chunks], chunk_type
@@ -800,9 +816,9 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
         
         chunked_elements = chunk_by_title(
             elements,
-            max_characters=1500,
-            combine_text_under_n_chars=100,
-            new_after_n_chars=1200
+            max_characters=4000,  # Larger chunks for better context
+            combine_text_under_n_chars=300,  # Combine small elements
+            new_after_n_chars=3500
         )
         
         chunks_with_metadata = []
@@ -816,12 +832,12 @@ def parse_html_with_unstructured(html_content: str, url: str = None) -> tuple[st
                 "metadata": {"chunk_index": i, "source_url": url}
             })
         
-        print(f"✅ Unstructured HTML: {len(elements)} elements → {len(chunks_with_metadata)} chunks")
+        print(f"âœ… Unstructured HTML: {len(elements)} elements â†’ {len(chunks_with_metadata)} chunks")
         
         return full_text, chunks_with_metadata, "unstructured"
         
     except Exception as e:
-        print(f"⚠️ Unstructured HTML parsing failed: {e}")
+        print(f"âš ï¸ Unstructured HTML parsing failed: {e}")
         soup = BeautifulSoup(html_content, 'html.parser')
         for element in soup(['script', 'style', 'nav', 'footer', 'header']):
             element.decompose()
@@ -852,46 +868,62 @@ async def fetch_page_with_playwright(url: str, wait_time: int = 5000, scroll: bo
             await progress_callback(message)
     
     if not PLAYWRIGHT_AVAILABLE:
-        await log_progress("⚠️ Playwright not available, falling back to requests")
+        await log_progress("âš ï¸ Playwright not available, falling back to requests")
         response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         return response.text
     
     try:
-        await log_progress(f"🎭 [1/7] Starting Playwright browser...")
+        await log_progress(f"ðŸŽ­ [1/7] Starting Playwright browser...")
         
         async with async_playwright() as p:
-            await log_progress(f"🎭 [2/7] Launching Chromium...")
+            await log_progress(f"ðŸŽ­ [2/7] Launching Chromium...")
             browser = await p.chromium.launch(headless=True)
             
-            await log_progress(f"🎭 [3/7] Creating browser context...")
+            await log_progress(f"ðŸŽ­ [3/7] Creating browser context...")
             context = await browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 viewport={'width': 1920, 'height': 1080}
             )
             page = await context.new_page()
             
-            await log_progress(f"🎭 [4/7] Navigating to {url[:50]}...")
+            await log_progress(f"ðŸŽ­ [4/7] Navigating to {url[:50]}...")
             await page.goto(url, wait_until='load', timeout=60000)
             
-            await log_progress(f"🎭 [5/7] Waiting for JavaScript to render ({wait_time/1000}s)...")
+            await log_progress(f"ðŸŽ­ [5/7] Waiting for JavaScript to render ({wait_time/1000}s)...")
             await page.wait_for_timeout(wait_time)
             
             # Try to click "Expand All" or similar buttons if they exist
+            # Try to expand any collapsed sections using generic selectors
             try:
-                expand_buttons = await page.query_selector_all('button:has-text("Expand"), button:has-text("Show All"), [aria-expanded="false"]')
-                if expand_buttons:
-                    await log_progress(f"🎭 [5.5/7] Found {len(expand_buttons)} expandable sections, clicking...")
-                for btn in expand_buttons[:10]:
+                all_expand_buttons = []
+                for selector in EXPAND_BUTTON_SELECTORS[:15]:  # Try first 15 selectors
                     try:
-                        await btn.click()
-                        await page.wait_for_timeout(300)
+                        buttons = await page.query_selector_all(selector)
+                        all_expand_buttons.extend(buttons)
                     except:
                         pass
+                
+                if all_expand_buttons:
+                    await log_progress(f"ðŸŽ­ [5.5/7] Found {len(all_expand_buttons)} expandable sections, clicking...")
+                    for btn in all_expand_buttons[:15]:  # Click up to 15 buttons
+                        try:
+                            await btn.click()
+                            await page.wait_for_timeout(300)
+                        except:
+                            pass
             except:
                 pass
             
+            # Wait for tables specifically if present
+            try:
+                await page.wait_for_selector('table', timeout=3000)
+                await log_progress(f"ðŸŽ­ [5.6/7] Tables detected, waiting for data...")
+                await page.wait_for_timeout(1500)
+            except:
+                pass  # No tables or timeout - continue
+            
             if scroll:
-                await log_progress(f"🎭 [6/7] Scrolling page to load dynamic content...")
+                await log_progress(f"ðŸŽ­ [6/7] Scrolling page to load dynamic content...")
                 for i in range(8):
                     await page.evaluate('window.scrollTo(0, document.body.scrollHeight * {})'.format((i + 1) / 8))
                     await page.wait_for_timeout(800)
@@ -899,39 +931,45 @@ async def fetch_page_with_playwright(url: str, wait_time: int = 5000, scroll: bo
                 await page.evaluate('window.scrollTo(0, 0)')
                 await page.wait_for_timeout(500)
             
-            await log_progress(f"🎭 [6.5/7] Final wait for lazy-loaded content...")
+            await log_progress(f"ðŸŽ­ [6.5/7] Final wait for lazy-loaded content...")
             await page.wait_for_timeout(2000)
             
-            await log_progress(f"🎭 [7/7] Extracting rendered HTML...")
+            await log_progress(f"ðŸŽ­ [7/7] Extracting rendered HTML...")
             html_content = await page.content()
             
             await browser.close()
             
-            await log_progress(f"✅ Playwright fetched {len(html_content):,} bytes from {url[:50]}")
+            await log_progress(f"âœ… Playwright fetched {len(html_content):,} bytes from {url[:50]}")
             return html_content
             
     except Exception as e:
-        await log_progress(f"⚠️ Playwright fetch failed: {e}, falling back to requests")
+        await log_progress(f"âš ï¸ Playwright fetch failed: {e}, falling back to requests")
         try:
             response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
             return response.text
         except Exception as req_e:
-            await log_progress(f"❌ Requests also failed: {req_e}")
+            await log_progress(f"âŒ Requests also failed: {req_e}")
             raise
 
-def should_use_playwright(url: str) -> bool:
+def should_use_playwright(url: str, force_playwright: bool = None) -> bool:
     """
-    Determine if a URL should use Playwright based on known dynamic sites.
+    Determine if a URL should use Playwright.
+    
+    Args:
+        url: The URL to check
+        force_playwright: If True, always use. If False, never use. If None, auto-detect.
+    
+    Returns:
+        Boolean indicating whether to use Playwright
     """
-    dynamic_domains = [
-        'oracle.com',
-        'aws.amazon.com',
-        'azure.microsoft.com',
-        'cloud.google.com',
-        'salesforce.com',
-        'workday.com',
-        'servicenow.com'
-    ]
+    # User override
+    if force_playwright is True:
+        return True
+    if force_playwright is False:
+        return False
+    
+    # Auto-detect based on configurable domain list
+    dynamic_domains = load_dynamic_domains()
     
     for domain in dynamic_domains:
         if domain in url.lower():
@@ -960,14 +998,64 @@ def add_to_bm25_index(chunks: List[str], metadata_list: List[dict]):
     
     save_bm25_index(bm25_data)
 
+def tokenize_for_bm25(text: str) -> List[str]:
+    """
+    Improved tokenization for BM25 with stemming-like behavior and stop word removal.
+    """
+    # Remove punctuation and convert to lowercase
+    text = re.sub(r'[^\w\s]', '', text.lower())
+    
+    # Tokenize
+    tokens = text.split()
+    
+    # Remove stop words and very short tokens
+    filtered_tokens = [t for t in tokens if t not in STOP_WORDS and len(t) > 2]
+    
+    # Simple suffix removal (poor man's stemming)
+    stemmed_tokens = []
+    for token in filtered_tokens:
+        # Remove common suffixes
+        if token.endswith('ing'):
+            token = token[:-3]
+        elif token.endswith('tion'):
+            token = token[:-4]
+        elif token.endswith('ed') and len(token) > 4:
+            token = token[:-2]
+        elif token.endswith('ly') and len(token) > 4:
+            token = token[:-2]
+        elif token.endswith('ment') and len(token) > 5:
+            token = token[:-4]
+        elif token.endswith('ness') and len(token) > 5:
+            token = token[:-4]
+        elif token.endswith('able') and len(token) > 5:
+            token = token[:-4]
+        elif token.endswith('ies'):
+            token = token[:-3] + 'y'
+        elif token.endswith('es') and len(token) > 3:
+            token = token[:-2]
+        elif token.endswith('s') and len(token) > 3:
+            token = token[:-1]
+        
+        if len(token) > 2:
+            stemmed_tokens.append(token)
+    
+    return stemmed_tokens
+
+
 def search_bm25(query: str, top_k: int = 10) -> List[dict]:
+    """Search using BM25 with improved tokenization."""
     bm25_data = load_bm25_index()
     
     if not bm25_data["documents"]:
         return []
     
-    tokenized_docs = [doc.lower().split() for doc in bm25_data["documents"]]
-    tokenized_query = query.lower().split()
+    # Use improved tokenization
+    tokenized_docs = [tokenize_for_bm25(doc) for doc in bm25_data["documents"]]
+    tokenized_query = tokenize_for_bm25(query)
+    
+    # Handle empty tokenization
+    if not tokenized_query:
+        tokenized_query = query.lower().split()
     
     bm25 = BM25Okapi(tokenized_docs)
     scores = bm25.get_scores(tokenized_query)
@@ -1024,13 +1112,13 @@ def get_full_documents_by_ids(doc_ids: List[str]) -> List[dict]:
                 if content_hash not in seen_content_hashes:
                     documents.append(doc)
                     seen_content_hashes.add(content_hash)
-                    print(f"✅ Loaded unique document: {doc.get('metadata', {}).get('title', doc_id)[:50]}")
+                    print(f"âœ… Loaded unique document: {doc.get('metadata', {}).get('title', doc_id)[:50]}")
                 else:
-                    print(f"⏭️ Skipping duplicate content: {doc.get('metadata', {}).get('title', doc_id)[:50]}")
+                    print(f"â­ï¸ Skipping duplicate content: {doc.get('metadata', {}).get('title', doc_id)[:50]}")
                 
                 seen_ids.add(doc_id)
     
-    print(f"📚 Unique documents after dedup: {len(documents)}")
+    print(f"ðŸ“š Unique documents after dedup: {len(documents)}")
     return documents
 
 # ==================== Conversation Functions ====================
@@ -1085,7 +1173,7 @@ def list_all_conversations() -> List[dict]:
                 with open(path, 'r') as f:
                     content = f.read()
                     if not content.strip():  # Empty file
-                        print(f"⚠️ Skipping empty conversation file: {filename}")
+                        print(f"âš ï¸ Skipping empty conversation file: {filename}")
                         continue
                     conv = json.loads(content)
                     conversations.append({
@@ -1096,7 +1184,7 @@ def list_all_conversations() -> List[dict]:
                         "message_count": len(conv['messages'])
                     })
             except (json.JSONDecodeError, KeyError) as e:
-                print(f"⚠️ Skipping corrupted conversation file {filename}: {e}")
+                print(f"âš ï¸ Skipping corrupted conversation file {filename}: {e}")
                 continue
     conversations.sort(key=lambda x: x['updated_at'], reverse=True)
     return conversations
@@ -1120,7 +1208,7 @@ def rerank_results(query: str, documents: List[dict], top_n: int = 5, source: st
                     seen_content.add(content_hash)
         
         if len(unique_docs) < len(documents):
-            print(f"🔄 Deduplicated: {len(documents)} → {len(unique_docs)} documents before reranking")
+            print(f"ðŸ”„ Deduplicated: {len(documents)} â†’ {len(unique_docs)} documents before reranking")
         
         documents = unique_docs
         
@@ -1173,31 +1261,7 @@ def rewrite_query_with_llm(query: str) -> List[str]:
     Now with better category awareness (compute vs database vs storage).
     """
     try:
-        prompt = f"""You are a search query optimizer for a CLOUD PRICING knowledge base.
-The knowledge base contains pricing for Oracle Cloud (OCI), Microsoft Azure, and AWS.
-
-User's question: "{query}"
-
-IMPORTANT - Identify the SERVICE CATEGORY first:
-- COMPUTE: Virtual Machines, VMs, EC2, instances, OCPU, vCPU, compute shapes
-- DATABASE: Database services, RDS, Oracle DB, SQL, MySQL, PostgreSQL
-- STORAGE: Block storage, object storage, S3, blobs
-- NETWORKING: Load balancers, VPN, bandwidth
-
-Your task: Generate 3-5 search query variations that would match the CORRECT category.
-
-CRITICAL RULES:
-1. If user asks about "compute", do NOT include database terms
-2. If user asks about "database", do NOT include compute terms
-3. Use the cloud provider's actual naming conventions:
-   - Oracle: "Compute - Standard - E4", "Compute - Standard - E5", "VM.Standard"
-   - Azure: "Virtual Machines", "B-series", "D-series", "F-series"
-   - AWS: "EC2", "t3", "m5", "c5"
-4. Keep variations SHORT (2-5 words each)
-5. Include the cloud provider name if mentioned
-
-Return ONLY a JSON array of strings, nothing else:
-["variation1", "variation2", "variation3"]"""
+        prompt = QUERY_REWRITE_PROMPT.format(query=query)
 
         response = llm.invoke(prompt)
         response_text = response.content.strip()
@@ -1214,36 +1278,21 @@ Return ONLY a JSON array of strings, nothing else:
         if query not in variations:
             variations.insert(0, query)
         
-        print(f"🧠 LLM Query Rewrite: '{query}' → {variations}")
+        print(f"ðŸ§  LLM Query Rewrite: '{query}' â†’ {variations}")
         return variations[:5]  # Max 5 variations
         
     except Exception as e:
-        print(f"⚠️ LLM query rewrite failed: {e}, using original query")
+        print(f"âš ï¸ LLM query rewrite failed: {e}, using original query")
         return [query]
 
 
 def normalize_query(query: str) -> str:
     """
-    Simple query normalization as fallback.
-    Handles basic variations in naming conventions.
+    Simple query normalization - generic version.
+    Just returns the query with basic cleanup.
     """
-    import re
-    
-    # Extract product identifiers (E4, E5, X7, A1, etc.)
-    product_codes = re.findall(r'\b([AEX]\d+)\b', query, re.IGNORECASE)
-    
-    if product_codes:
-        enhanced_parts = []
-        for code in product_codes:
-            code_upper = code.upper()
-            enhanced_parts.extend([
-                f"Standard - {code_upper}",
-                f"- {code_upper}",
-                code_upper
-            ])
-        return f"{query} {' '.join(enhanced_parts)}"
-    
-    return query
+    # Basic cleanup - remove extra whitespace
+    return ' '.join(query.split())
 
 
 def multi_query_search(query: str, top_k: int = 10, source_filter: dict = None) -> List[dict]:
@@ -1289,7 +1338,7 @@ def multi_query_search(query: str, top_k: int = 10, source_filter: dict = None) 
     # Sort by score and return top results
     sorted_results = sorted(all_results.values(), key=lambda x: x['score'], reverse=True)
     
-    print(f"🔍 Multi-query search: {len(query_variations)} variations → {len(sorted_results)} unique results")
+    print(f"ðŸ” Multi-query search: {len(query_variations)} variations â†’ {len(sorted_results)} unique results")
     
     return sorted_results[:top_k]
 
@@ -1350,7 +1399,7 @@ def hybrid_search(query: str, top_k: int = 10, source_filter: dict = None, track
             
             is_negative = any(p in memory_answer.lower() or p in memory_text.lower() for p in negative_patterns)
             if is_negative:
-                print(f"⏭️ Skipping negative memory result: {memory_id}")
+                print(f"â­ï¸ Skipping negative memory result: {memory_id}")
                 continue  # Skip this memory result
             
             combined[memory_id] = {
@@ -1407,7 +1456,7 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
         if tracker:
             tracker.start_step("embed_query")
         
-        # دور في كل المصادر (بدون filter)
+        # Ø¯ÙˆØ± ÙÙŠ ÙƒÙ„ Ø§Ù„Ù…ØµØ§Ø¯Ø± (Ø¨Ø¯ÙˆÙ† filter)
         # Step 2 & 3: Pinecone + BM25 search (inside hybrid_search)
         if tracker:
             tracker.complete_step("embed_query", model="text-embedding-3-large")
@@ -1422,12 +1471,12 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
         # Step 5: Reranking
         if tracker:
             tracker.start_step("rerank")
-        reranked_docs = rerank_results(query, search_results, top_n=5)
+        reranked_docs = rerank_results(query, search_results, top_n=8)
         if tracker:
             tracker.complete_step("rerank", model="rerank-v3.5", input_docs=len(search_results), output_docs=len(reranked_docs))
         
-        print(f"🔍 Search results count: {len(search_results)}")
-        print(f"🔍 Reranked docs count: {len(reranked_docs)}")
+        print(f"ðŸ” Search results count: {len(search_results)}")
+        print(f"ðŸ” Reranked docs count: {len(reranked_docs)}")
         
         parent_ids = []
         sources_info = []
@@ -1441,7 +1490,7 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
             doc_type = metadata.get('type', 'document')
             chunk_text = doc.get('text', '') or metadata.get('text', '')  # Try both places
             
-            print(f"📄 Doc type: {doc_type}, Score: {score}, Has text: {bool(chunk_text)}, Text length: {len(chunk_text) if chunk_text else 0}")
+            print(f"ðŸ“„ Doc type: {doc_type}, Score: {score}, Has text: {bool(chunk_text)}, Text length: {len(chunk_text) if chunk_text else 0}")
             
             # Handle Memory
             if doc_type == 'memory':
@@ -1503,13 +1552,13 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
                     if parent_id in chunk_texts:
                         chunk_texts[parent_id]['texts'].append(chunk_text)
         
-        print(f"📚 Parent IDs found: {len(parent_ids)}")
-        print(f"📚 Chunk texts collected: {len(chunk_texts)}")
+        print(f"ðŸ“š Parent IDs found: {len(parent_ids)}")
+        print(f"ðŸ“š Chunk texts collected: {len(chunk_texts)}")
         
         # Build context from full documents OR chunk texts
         full_documents = get_full_documents_by_ids(parent_ids)
         
-        print(f"📚 Full documents loaded: {len(full_documents)}")
+        print(f"ðŸ“š Full documents loaded: {len(full_documents)}")
         
         # TOKEN LIMIT to prevent 429 errors
         MAX_CONTEXT_TOKENS = 15000  # Leave room for system prompt, history, and response
@@ -1535,12 +1584,12 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
             content_hash = hash(content_preview)
             
             if content_hash in seen_chunk_content:
-                print(f"⏭️ Skipping duplicate chunk content: {chunk_data['title'][:40]}")
+                print(f"â­ï¸ Skipping duplicate chunk content: {chunk_data['title'][:40]}")
                 continue
             
             seen_chunk_content.add(content_hash)
             
-            print(f"📝 Using chunk texts for: {chunk_data['title'][:50]}")
+            print(f"ðŸ“ Using chunk texts for: {chunk_data['title'][:50]}")
             chunk_content = f"=== {chunk_data['title']} ===\n"
             
             # Join unique chunks (these contain the actual extracted data)
@@ -1619,10 +1668,10 @@ def get_document_context_with_sources(query: str, top_k: int = 10, display_min_s
                 context_tokens += memory_tokens
         
         if truncated:
-            print(f"⚠️ Context was truncated to fit within {MAX_CONTEXT_TOKENS} token limit")
+            print(f"âš ï¸ Context was truncated to fit within {MAX_CONTEXT_TOKENS} token limit")
         
-        print(f"📝 Final context length: {len(context)} chars (~{context_tokens} tokens)")
-        print(f"🖼️ Images found: {len(all_images)}")
+        print(f"ðŸ“ Final context length: {len(context)} chars (~{context_tokens} tokens)")
+        print(f"ðŸ–¼ï¸ Images found: {len(all_images)}")
         
         # Remove duplicate sources
         seen_sources = set()
@@ -1664,12 +1713,12 @@ def save_to_memory(question: str, answer: str, user_id: str):
     answer_lower = answer.lower()
     for pattern in negative_patterns:
         if pattern in answer_lower:
-            print(f"⏭️ Skipping memory save - negative answer detected: '{pattern[:30]}...'")
+            print(f"â­ï¸ Skipping memory save - negative answer detected: '{pattern[:30]}...'")
             return  # Don't save this to memory
     
     # Also skip very short answers (likely not useful)
     if len(answer) < 50:
-        print(f"⏭️ Skipping memory save - answer too short ({len(answer)} chars)")
+        print(f"â­ï¸ Skipping memory save - answer too short ({len(answer)} chars)")
         return
     
     memory_text = f"Question: {question}\nAnswer: {answer}"
@@ -1687,7 +1736,7 @@ def save_to_memory(question: str, answer: str, user_id: str):
             "text": memory_text
         }
     }])
-    print(f"✅ Saved to memory: {question[:50]}...")
+    print(f"âœ… Saved to memory: {question[:50]}...")
 
 def extract_metadata(text: str, source_type: str):
     prompt = f"""Analyze the following {source_type} content and extract metadata.
@@ -1792,8 +1841,8 @@ def ingest_document_with_semantic_chunks(full_text: str, source: str, doc_type: 
             avg_chunk_size=round(len(full_text) / len(chunks)) if chunks else 0
         )
         
-        chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
-        print(f"📦 Created {len(chunks)} chunks using {chunker_emoji} {chunker_type} chunker for {source}")
+        chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
+        print(f"ðŸ“¦ Created {len(chunks)} chunks using {chunker_emoji} {chunker_type} chunker for {source}")
         
         # Step 3: Embedding
         tracker.start_step("embed")
@@ -1924,9 +1973,9 @@ def ingest_with_unstructured(chunks_with_metadata: List[dict], full_text: str, s
             avg_chunk_size=round(len(full_text) / len(chunks_with_metadata)) if chunks_with_metadata else 0
         )
         
-        chunker_emoji = "🔧" if chunker_type == "unstructured" else ("🧠" if chunker_type == "semantic" else "📏")
-        print(f"📦 Created {len(chunks_with_metadata)} chunks using {chunker_emoji} {chunker_type} chunker")
-        print(f"📊 Element types: {element_type_counts}")
+        chunker_emoji = "ðŸ”§" if chunker_type == "unstructured" else ("ðŸ§ " if chunker_type == "semantic" else "ðŸ“")
+        print(f"ðŸ“¦ Created {len(chunks_with_metadata)} chunks using {chunker_emoji} {chunker_type} chunker")
+        print(f"ðŸ“Š Element types: {element_type_counts}")
         
         tracker.start_step("embed")
         metadata_list = []
@@ -2023,7 +2072,7 @@ def ingest_with_unstructured(chunks_with_metadata: List[dict], full_text: str, s
 
 @app.get("/")
 def root():
-    return {"message": "🤖 RAG Agent API v2.4 - With Progress Tracking"}
+    return {"message": "ðŸ¤– RAG Agent API v2.4 - With Progress Tracking"}
 
 # ==================== Progress Streaming Helpers ====================
 
@@ -2048,7 +2097,7 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
     parent_id = f"parent_{uuid.uuid4().hex[:12]}"
     domain_name = extract_domain_name(source) if doc_type == "website" else ""
     
-    yield progress_event("saving_doc", 40, "💾 Saving document...")
+    yield progress_event("saving_doc", 40, "ðŸ’¾ Saving document...")
     
     save_full_document(parent_id, full_text, {
         "source": source,
@@ -2059,7 +2108,7 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
         "domain": domain_name
     }, images=images)
     
-    yield progress_event("chunking", 45, "✂️ Creating semantic chunks...")
+    yield progress_event("chunking", 45, "âœ‚ï¸ Creating semantic chunks...")
     
     chunks, chunker_type = smart_chunk_text(full_text)
     total_chunks = len(chunks)
@@ -2069,7 +2118,7 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
         return
     
     # Show chunker type in progress
-    chunker_display = "🧠 Semantic Chunker" if chunker_type == "semantic" else "📏 Fallback Splitter"
+    chunker_display = "ðŸ§  Semantic Chunker" if chunker_type == "semantic" else "ðŸ“ Fallback Splitter"
     img_count = len(images) if images else 0
     yield progress_event("chunking", 50, f"Created {total_chunks} chunks using {chunker_display}", chunker_type=chunker_type)
     
@@ -2094,22 +2143,22 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
         metadata_list.append(chunk_metadata)
     
     # BATCH EMBEDDING - much faster!
-    yield progress_event("embedding", 55, f"🧠 Batch embedding {total_chunks} chunks (this is fast!)...")
+    yield progress_event("embedding", 55, f"ðŸ§  Batch embedding {total_chunks} chunks (this is fast!)...")
     
     try:
-        print(f"🚀 Starting batch embedding for {total_chunks} chunks...")
+        print(f"ðŸš€ Starting batch embedding for {total_chunks} chunks...")
         vectors = embeddings.embed_documents(chunks)
-        print(f"✅ Batch embedding complete: {len(vectors)} vectors")
+        print(f"âœ… Batch embedding complete: {len(vectors)} vectors")
         
-        yield progress_event("embedding_done", 75, f"✅ Embedded {len(vectors)} chunks in one batch!")
+        yield progress_event("embedding_done", 75, f"âœ… Embedded {len(vectors)} chunks in one batch!")
         
     except Exception as e:
-        print(f"❌ Batch embedding failed: {e}")
+        print(f"âŒ Batch embedding failed: {e}")
         yield error_event(f"Embedding failed: {str(e)}")
         return
     
     # Store vectors in Pinecone (batch upsert)
-    yield progress_event("storing", 80, f"💾 Storing {len(vectors)} vectors in Pinecone...")
+    yield progress_event("storing", 80, f"ðŸ’¾ Storing {len(vectors)} vectors in Pinecone...")
     
     batch_size = 100
     vectors_to_upsert = []
@@ -2125,17 +2174,17 @@ def ingest_with_progress(full_text: str, source: str, doc_type: str, file_path: 
             index.upsert(vectors=vectors_to_upsert)
             vectors_to_upsert = []
             progress = 80 + int((i / len(vectors)) * 15)
-            yield progress_event("storing", progress, f"💾 Stored {i+1}/{len(vectors)} vectors...")
+            yield progress_event("storing", progress, f"ðŸ’¾ Stored {i+1}/{len(vectors)} vectors...")
     
     if vectors_to_upsert:
         index.upsert(vectors=vectors_to_upsert)
     
-    yield progress_event("bm25", 97, "📚 Adding to BM25 index...")
+    yield progress_event("bm25", 97, "ðŸ“š Adding to BM25 index...")
     add_to_bm25_index(chunks, metadata_list)
     
     # Include chunker type in done message
-    chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
-    yield done_event(f"✅ Ingested with {total_chunks} chunks {chunker_emoji}", total_chunks, chunker_type=chunker_type, images_count=img_count)
+    chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
+    yield done_event(f"âœ… Ingested with {total_chunks} chunks {chunker_emoji}", total_chunks, chunker_type=chunker_type, images_count=img_count)
 
 def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_text: str, source: str, doc_type: str, file_path: str, metadata: dict, chunker_type: str = "unstructured", images: List[dict] = None):
     """Generator that yields progress updates during Unstructured ingestion - with BATCH embedding"""
@@ -2148,7 +2197,7 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
         et = c.get("element_type", "Unknown")
         element_type_counts[et] = element_type_counts.get(et, 0) + 1
     
-    yield progress_event("saving_doc", 40, "💾 Saving document...")
+    yield progress_event("saving_doc", 40, "ðŸ’¾ Saving document...")
     
     save_full_document(parent_id, full_text, {
         "source": source,
@@ -2164,11 +2213,11 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
     total_chunks = len(chunks_with_metadata)
     element_summary = ", ".join([f"{v} {k}" for k, v in element_type_counts.items()])
     img_count = len(images) if images else 0
-    yield progress_event("chunking", 45, f"🔧 Unstructured created {total_chunks} chunks ({element_summary})", 
+    yield progress_event("chunking", 45, f"ðŸ”§ Unstructured created {total_chunks} chunks ({element_summary})", 
                         chunker_type=chunker_type, element_types=element_type_counts)
     
     # Prepare all chunks first
-    yield progress_event("preparing", 50, f"📝 Preparing {total_chunks} chunks for embedding...")
+    yield progress_event("preparing", 50, f"ðŸ“ Preparing {total_chunks} chunks for embedding...")
     
     metadata_list = []
     plain_chunks = []
@@ -2209,23 +2258,23 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
         return
     
     # BATCH EMBEDDING - much faster!
-    yield progress_event("embedding", 55, f"🧠 Batch embedding {len(plain_chunks)} chunks (this is fast!)...")
+    yield progress_event("embedding", 55, f"ðŸ§  Batch embedding {len(plain_chunks)} chunks (this is fast!)...")
     
     try:
         # Use embed_documents for batch embedding (single API call!)
-        print(f"🚀 Starting batch embedding for {len(plain_chunks)} chunks...")
+        print(f"ðŸš€ Starting batch embedding for {len(plain_chunks)} chunks...")
         vectors = embeddings.embed_documents(plain_chunks)
-        print(f"✅ Batch embedding complete: {len(vectors)} vectors")
+        print(f"âœ… Batch embedding complete: {len(vectors)} vectors")
         
-        yield progress_event("embedding_done", 75, f"✅ Embedded {len(vectors)} chunks in one batch!")
+        yield progress_event("embedding_done", 75, f"âœ… Embedded {len(vectors)} chunks in one batch!")
         
     except Exception as e:
-        print(f"❌ Batch embedding failed: {e}")
+        print(f"âŒ Batch embedding failed: {e}")
         yield error_event(f"Embedding failed: {str(e)}")
         return
     
     # Store vectors in Pinecone
-    yield progress_event("storing", 80, f"💾 Storing {len(vectors)} vectors in Pinecone...")
+    yield progress_event("storing", 80, f"ðŸ’¾ Storing {len(vectors)} vectors in Pinecone...")
     
     # Batch upsert to Pinecone (in batches of 100)
     batch_size = 100
@@ -2243,20 +2292,20 @@ def ingest_with_progress_unstructured(chunks_with_metadata: List[dict], full_tex
             index.upsert(vectors=vectors_to_upsert)
             vectors_to_upsert = []
             progress = 80 + int((i / len(vectors)) * 15)
-            yield progress_event("storing", progress, f"💾 Stored {i+1}/{len(vectors)} vectors...")
+            yield progress_event("storing", progress, f"ðŸ’¾ Stored {i+1}/{len(vectors)} vectors...")
     
     # Upsert remaining vectors
     if vectors_to_upsert:
         index.upsert(vectors=vectors_to_upsert)
     
-    yield progress_event("bm25", 97, "📚 Adding to BM25 index...")
+    yield progress_event("bm25", 97, "ðŸ“š Adding to BM25 index...")
     add_to_bm25_index(plain_chunks, metadata_list)
     
-    print(f"📦 Created {len(plain_chunks)} chunks using 🔧 {chunker_type} chunker")
-    print(f"📊 Element types: {element_type_counts}")
+    print(f"ðŸ“¦ Created {len(plain_chunks)} chunks using ðŸ”§ {chunker_type} chunker")
+    print(f"ðŸ“Š Element types: {element_type_counts}")
     
     yield done_event(
-        f"✅ Ingested with {len(plain_chunks)} chunks 🔧 ({element_summary})", 
+        f"âœ… Ingested with {len(plain_chunks)} chunks ðŸ”§ ({element_summary})", 
         len(plain_chunks), 
         chunker_type=chunker_type, 
         element_types=element_type_counts,
@@ -2276,33 +2325,33 @@ async def scrape_website_stream(url: str):
             
             if use_playwright:
                 # Detailed Playwright progress
-                yield progress_event("playwright_start", 5, f"🎭 Detected dynamic site, using Playwright...")
-                yield progress_event("playwright_browser", 8, f"🎭 [1/7] Starting headless browser...")
-                yield progress_event("playwright_navigate", 12, f"🎭 [2/7] Navigating to {url[:40]}...")
+                yield progress_event("playwright_start", 5, f"ðŸŽ­ Detected dynamic site, using Playwright...")
+                yield progress_event("playwright_browser", 8, f"ðŸŽ­ [1/7] Starting headless browser...")
+                yield progress_event("playwright_navigate", 12, f"ðŸŽ­ [2/7] Navigating to {url[:40]}...")
                 
                 html_content = await fetch_page_with_playwright(url)
                 html_size_kb = len(html_content) / 1024
                 
-                yield progress_event("playwright_done", 18, f"🎭 ✓ Rendered page ({html_size_kb:.1f} KB)")
+                yield progress_event("playwright_done", 18, f"ðŸŽ­ âœ“ Rendered page ({html_size_kb:.1f} KB)")
             else:
-                yield progress_event("fetching", 10, f"📄 Fetching {url}...")
+                yield progress_event("fetching", 10, f"ðŸ“„ Fetching {url}...")
                 headers = {'User-Agent': 'Mozilla/5.0'}
                 response = requests.get(url, headers=headers, timeout=15)
                 response.raise_for_status()
                 html_content = response.text
                 html_size_kb = len(html_content) / 1024
-                yield progress_event("fetched", 18, f"📄 ✓ Fetched ({html_size_kb:.1f} KB)")
+                yield progress_event("fetched", 18, f"ðŸ“„ âœ“ Fetched ({html_size_kb:.1f} KB)")
             
-            yield progress_event("parsing", 20, "🔍 Analyzing HTML structure...")
+            yield progress_event("parsing", 20, "ðŸ” Analyzing HTML structure...")
             
             # Extract images BEFORE parsing
             images = extract_images_from_page(url, html_content)
-            yield progress_event("images", 25, f"🖼️ Found {len(images)} images")
+            yield progress_event("images", 25, f"ðŸ–¼ï¸ Found {len(images)} images")
             
             # Use Unstructured.io if available
             if UNSTRUCTURED_AVAILABLE:
-                yield progress_event("unstructured", 28, "🔧 Starting Unstructured.io smart parsing...")
-                yield progress_event("unstructured_parse", 32, "🔧 Detecting tables, text blocks, headers...")
+                yield progress_event("unstructured", 28, "ðŸ”§ Starting Unstructured.io smart parsing...")
+                yield progress_event("unstructured_parse", 32, "ðŸ”§ Detecting tables, text blocks, headers...")
                 
                 full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, url)
                 
@@ -2317,18 +2366,18 @@ async def scrape_website_stream(url: str):
                     element_types[et] = element_types.get(et, 0) + 1
                 element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                 
-                yield progress_event("unstructured_done", 38, f"🔧 ✓ Found {len(chunks_with_metadata)} chunks ({element_summary})")
+                yield progress_event("unstructured_done", 38, f"ðŸ”§ âœ“ Found {len(chunks_with_metadata)} chunks ({element_summary})")
                 
-                yield progress_event("metadata", 40, "📋 Extracting metadata...")
+                yield progress_event("metadata", 40, "ðŸ“‹ Extracting metadata...")
                 metadata = extract_metadata(full_text[:3000], "website")
                 
-                yield progress_event("embedding_start", 42, f"🧠 Starting embedding of {len(chunks_with_metadata)} chunks...")
+                yield progress_event("embedding_start", 42, f"ðŸ§  Starting embedding of {len(chunks_with_metadata)} chunks...")
                 
                 for event in ingest_with_progress_unstructured(chunks_with_metadata, full_text, url, "website", "", metadata, chunker_type, images=images):
                     yield event
             else:
                 # Fallback to BeautifulSoup
-                yield progress_event("parsing", 30, "📝 Parsing with BeautifulSoup...")
+                yield progress_event("parsing", 30, "ðŸ“ Parsing with BeautifulSoup...")
                 soup = BeautifulSoup(html_content, 'html.parser')
                 for element in soup(['script', 'style', 'nav', 'footer', 'header']):
                     element.decompose()
@@ -2341,7 +2390,7 @@ async def scrape_website_stream(url: str):
                     yield error_event("No content found on page")
                     return
                 
-                yield progress_event("metadata", 35, "📋 Extracting metadata...")
+                yield progress_event("metadata", 35, "ðŸ“‹ Extracting metadata...")
                 metadata = extract_metadata(full_text, "website")
                 
                 for event in ingest_with_progress(full_text, url, "website", "", metadata, images=images):
@@ -2371,10 +2420,10 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
             is_dynamic_site = PLAYWRIGHT_AVAILABLE and should_use_playwright(url)
             
             if is_dynamic_site:
-                yield progress_event("starting", 2, f"🎭 Detected dynamic site - will use Playwright for JavaScript rendering")
-                yield progress_event("starting", 5, f"🚀 Starting recursive scrape from {url}")
+                yield progress_event("starting", 2, f"ðŸŽ­ Detected dynamic site - will use Playwright for JavaScript rendering")
+                yield progress_event("starting", 5, f"ðŸš€ Starting recursive scrape from {url}")
             else:
-                yield progress_event("starting", 5, f"🚀 Starting recursive scrape from {url}")
+                yield progress_event("starting", 5, f"ðŸš€ Starting recursive scrape from {url}")
             
             while to_visit and len(visited) < max_pages:
                 current_url, depth = to_visit.pop(0)
@@ -2395,22 +2444,22 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                     if use_playwright:
                         used_playwright = True
                         yield progress_event("playwright", overall_progress, 
-                            f"🎭 [{page_num}/{max_pages}] Starting browser for: {current_url[:35]}...",
+                            f"ðŸŽ­ [{page_num}/{max_pages}] Starting browser for: {current_url[:35]}...",
                             current_page=page_num, total_pages=max_pages, current_url=current_url)
                         
                         yield progress_event("playwright_render", overall_progress, 
-                            f"🎭 [{page_num}/{max_pages}] Rendering JavaScript (this may take 20-40 seconds)...",
+                            f"ðŸŽ­ [{page_num}/{max_pages}] Rendering JavaScript (this may take 20-40 seconds)...",
                             current_page=page_num, total_pages=max_pages)
                         
                         html_content = await fetch_page_with_playwright(current_url)
                         html_size_kb = len(html_content) / 1024
                         
                         yield progress_event("playwright_done", overall_progress, 
-                            f"🎭 [{page_num}/{max_pages}] ✓ Rendered {html_size_kb:.0f}KB",
+                            f"ðŸŽ­ [{page_num}/{max_pages}] âœ“ Rendered {html_size_kb:.0f}KB",
                             current_page=page_num, total_pages=max_pages)
                     else:
                         yield progress_event("scraping", overall_progress, 
-                            f"📄 [{page_num}/{max_pages}] Fetching: {current_url[:45]}...",
+                            f"ðŸ“„ [{page_num}/{max_pages}] Fetching: {current_url[:45]}...",
                             current_page=page_num, total_pages=max_pages, current_url=current_url)
                         
                         headers = {'User-Agent': 'Mozilla/5.0'}
@@ -2423,7 +2472,7 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                         new_links = extract_links_from_page(current_url, html_content, same_path_only)
                         if new_links:
                             yield progress_event("links", overall_progress, 
-                                f"🔗 [{page_num}/{max_pages}] Found {len(new_links)} links to explore")
+                                f"ðŸ”— [{page_num}/{max_pages}] Found {len(new_links)} links to explore")
                         for link in new_links:
                             if link not in visited and len(to_visit) + len(visited) < max_pages * 2:
                                 to_visit.append((link, depth + 1))
@@ -2435,7 +2484,7 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                     # Parse content using Unstructured if available
                     if UNSTRUCTURED_AVAILABLE:
                         yield progress_event("parsing", overall_progress, 
-                            f"🔧 [{page_num}/{max_pages}] Parsing with Unstructured.io...")
+                            f"ðŸ”§ [{page_num}/{max_pages}] Parsing with Unstructured.io...")
                         
                         full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, current_url)
                         
@@ -2453,7 +2502,7 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                             element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                             
                             yield progress_event("page_done", overall_progress,
-                                f"✓ Page {page_num}: {chunks} chunks 🔧 ({element_summary}), {len(images)} images",
+                                f"âœ“ Page {page_num}: {chunks} chunks ðŸ”§ ({element_summary}), {len(images)} images",
                                 page_url=current_url, page_chunks=chunks, page_images=len(images), chunker_type=chunker_type)
                     else:
                         # Fallback to BeautifulSoup
@@ -2470,22 +2519,22 @@ async def scrape_recursive_stream(url: str, max_depth: int = 2, max_pages: int =
                             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, current_url, "website", "", metadata, images=images)
                             total_chunks += chunks
                             pages_scraped.append(current_url)
-                            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+                            chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
                             
                             yield progress_event("page_done", overall_progress,
-                                f"✓ Page {page_num}: {chunks} chunks {chunker_emoji}, {len(images)} images",
+                                f"âœ“ Page {page_num}: {chunks} chunks {chunker_emoji}, {len(images)} images",
                                 page_url=current_url, page_chunks=chunks, page_images=len(images), chunker_type=chunker_type)
                     
                 except Exception as e:
                     yield progress_event("page_error", overall_progress,
-                        f"✗ Failed: {current_url[:30]}... - {str(e)[:30]}")
+                        f"âœ— Failed: {current_url[:30]}... - {str(e)[:30]}")
                     continue
             
             # Final message with indicators
-            unstructured_indicator = " 🔧" if UNSTRUCTURED_AVAILABLE else ""
-            playwright_indicator = " 🎭" if used_playwright else ""
+            unstructured_indicator = " ðŸ”§" if UNSTRUCTURED_AVAILABLE else ""
+            playwright_indicator = " ðŸŽ­" if used_playwright else ""
             yield done_event(
-                f"✅ Scraped {len(pages_scraped)} pages with {total_chunks} chunks{unstructured_indicator}{playwright_indicator}, {total_images} images",
+                f"âœ… Scraped {len(pages_scraped)} pages with {total_chunks} chunks{unstructured_indicator}{playwright_indicator}, {total_images} images",
                 total_chunks,
                 pages_scraped=pages_scraped,
                 total_pages=len(pages_scraped),
@@ -2755,7 +2804,7 @@ def unstructured_status():
     return {
         "unstructured_available": UNSTRUCTURED_AVAILABLE,
         "playwright_available": PLAYWRIGHT_AVAILABLE,
-        "message": "✅ Unstructured.io is loaded and ready" if UNSTRUCTURED_AVAILABLE else "⚠️ Unstructured.io is not available, using fallback parsing",
+        "message": "âœ… Unstructured.io is loaded and ready" if UNSTRUCTURED_AVAILABLE else "âš ï¸ Unstructured.io is not available, using fallback parsing",
         "capabilities": {
             "html_tables": UNSTRUCTURED_AVAILABLE,
             "pdf_structure": UNSTRUCTURED_AVAILABLE,
@@ -2974,7 +3023,7 @@ def execute_tool(tool_name: str, arguments: dict) -> dict:
                 seen_content.add(content[:100])
                 
                 search_results.append({
-                    "content": content[:1500],  # Limit content size
+                    "content": content[:3000],  # Limit content size
                     "source": match.metadata.get("source", "Unknown"),
                     "title": match.metadata.get("title", ""),
                     "type": doc_type,
@@ -3159,55 +3208,7 @@ async def run_agent_with_streaming(question: str, user_id: str, conversation_id:
     """
     
     # System prompt for the agent
-    system_prompt = """You are an expert AI assistant that combines a curated knowledge base with live web search to give complete, accurate answers.
-
-YOUR TOOLS (use in this order):
-1. search_knowledge_base: ALWAYS try this FIRST - contains curated pricing, specs, documentation
-2. search_web: Use when knowledge base doesn't have the info OR to fill gaps in comparisons
-3. list_available_sources: See what's in the knowledge base
-4. get_source_content: Get full content from a specific source
-
-CRITICAL WORKFLOW FOR COMPARISONS:
-1. Search knowledge base for Provider A → Get specific data
-2. Search knowledge base for Provider B → Get specific data  
-3. If ANY data is missing → Use search_web to find it
-4. NEVER leave blanks or say "not specified" - always find the answer
-
-RESPONSE QUALITY RULES:
-✅ ALWAYS use markdown tables for pricing comparisons
-✅ ALWAYS fill every cell in the table with actual numbers
-✅ ALWAYS convert units to match (e.g., all monthly OR all hourly)
-✅ ALWAYS add analysis AFTER the table explaining insights
-✅ ALWAYS give a clear recommendation at the end
-
-EXAMPLE OF PERFECT COMPARISON RESPONSE:
-
-## Pricing Comparison: Oracle vs Azure (2 vCPU, 16GB RAM)
-
-| Provider | Instance | vCPUs | RAM | Monthly Cost | Spot/Discount |
-|----------|----------|-------|-----|--------------|---------------|
-| Oracle   | E4.Flex  | 2     | 16GB | $XX.XX      | Free tier available |
-| Azure    | F2s v2   | 2     | 16GB | $XX.XX      | $XX.XX (spot) |
-
-### Key Differences:
-- **Pricing Model**: Oracle charges per OCPU (1 OCPU = 2 vCPU), Azure charges per vCPU
-- **Free Tier**: Oracle offers 3000 OCPU hours/month free
-- **Spot Pricing**: Azure offers up to 80% discount for interruptible workloads
-
-### Recommendation:
-For your use case (2 vCPU, 16GB), I recommend **[Provider]** because...
-
-NEVER DO THIS:
-❌ "The exact pricing isn't directly specified" - SEARCH WEB instead
-❌ "Use the pricing calculator" - FIND the actual price
-❌ Empty table cells - FILL with actual data or search more
-❌ Missing provider in comparison - SEARCH until you find it
-
-ALWAYS DO THIS:
-✅ Complete tables with real numbers
-✅ Clear winner recommendation
-✅ Actionable insights
-✅ Convert currencies/units for fair comparison"""
+    system_prompt = AGENT_SYSTEM_PROMPT
 
     # Get conversation history
     conv = load_conversation(conversation_id) if conversation_id else None
@@ -3215,11 +3216,11 @@ ALWAYS DO THIS:
     
     if conv and conv.get('messages'):
         # Add recent conversation for context (last 6 messages)
-        for msg in conv['messages'][-6:]:
+        for msg in conv['messages'][-15:]:  # More conversation history
             role = "user" if msg['role'] == 'user' else "assistant"
             messages_history.append({
                 "role": role,
-                "content": msg['content'][:1500]  # Limit size
+                "content": msg['content'][:3000]  # Larger content window  # Limit size
             })
     
     # Build messages for the agent
@@ -3234,7 +3235,7 @@ ALWAYS DO THIS:
     tool_calls_made = []
     
     # Agent loop - max 5 iterations
-    max_iterations = 5
+    max_iterations = 12  # Increased for deeper research
     iteration = 0
     
     while iteration < max_iterations:
@@ -3584,10 +3585,10 @@ def extract_images_from_pdf(pdf_path: str, doc_id: str) -> List[dict]:
                     continue
         
         pdf_doc.close()
-        print(f"📸 Extracted {len(images)} images from PDF")
+        print(f"ðŸ“¸ Extracted {len(images)} images from PDF")
         
     except ImportError:
-        print("⚠️ PyMuPDF not installed. Install with: pip install PyMuPDF")
+        print("âš ï¸ PyMuPDF not installed. Install with: pip install PyMuPDF")
     except Exception as e:
         print(f"Error extracting images from PDF: {e}")
     
@@ -3627,7 +3628,7 @@ def extract_images_from_docx(docx_path: str, doc_id: str) -> List[dict]:
                             'local_path': img_path
                         })
         
-        print(f"📸 Extracted {len(images)} images from DOCX")
+        print(f"ðŸ“¸ Extracted {len(images)} images from DOCX")
         
     except Exception as e:
         print(f"Error extracting images from DOCX: {e}")
@@ -3667,7 +3668,7 @@ def extract_images_from_pptx(pptx_path: str, doc_id: str) -> List[dict]:
                             'local_path': img_path
                         })
         
-        print(f"📸 Extracted {len(images)} images from PPTX")
+        print(f"ðŸ“¸ Extracted {len(images)} images from PPTX")
         
     except Exception as e:
         print(f"Error extracting images from PPTX: {e}")
@@ -3714,7 +3715,7 @@ async def upload_file(file: UploadFile = File(...)):
             images = extract_images_from_pdf(tmp_path, doc_id)
             
             if UNSTRUCTURED_AVAILABLE:
-                print(f"🔧 Using Unstructured.io for PDF: {file.filename}")
+                print(f"ðŸ”§ Using Unstructured.io for PDF: {file.filename}")
                 try:
                     chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "pdf")
                     if chunks_with_metadata:
@@ -3726,18 +3727,18 @@ async def upload_file(file: UploadFile = File(...)):
                         )
                         element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                         os.unlink(tmp_path)
-                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔧 ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                        return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {num_chunks} chunks ðŸ”§ ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
                 except Exception as e:
-                    print(f"⚠️ Unstructured PDF failed: {e}, using fallback")
+                    print(f"âš ï¸ Unstructured PDF failed: {e}, using fallback")
             
             loader = PyPDFLoader(tmp_path)
             documents = loader.load()
             full_text = "\n".join([doc.page_content for doc in documents])
             metadata = extract_metadata(full_text, "document")
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata, images=images)
-            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+            chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== TXT ====================
         elif suffix == ".txt":
@@ -3746,9 +3747,9 @@ async def upload_file(file: UploadFile = File(...)):
             full_text = "\n".join([doc.page_content for doc in documents])
             metadata = extract_metadata(full_text, "document")
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata)
-            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+            chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== DOCX ====================
         elif suffix == ".docx":
@@ -3756,7 +3757,7 @@ async def upload_file(file: UploadFile = File(...)):
             images = extract_images_from_docx(tmp_path, doc_id)
             
             if UNSTRUCTURED_AVAILABLE:
-                print(f"🔧 Using Unstructured.io for DOCX: {file.filename}")
+                print(f"ðŸ”§ Using Unstructured.io for DOCX: {file.filename}")
                 try:
                     chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "docx")
                     if chunks_with_metadata:
@@ -3768,23 +3769,23 @@ async def upload_file(file: UploadFile = File(...)):
                         )
                         element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                         os.unlink(tmp_path)
-                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔧 ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                        return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {num_chunks} chunks ðŸ”§ ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
                 except Exception as e:
-                    print(f"⚠️ Unstructured DOCX failed: {e}, using fallback")
+                    print(f"âš ï¸ Unstructured DOCX failed: {e}, using fallback")
             
             from docx import Document as DocxDocument
             doc = DocxDocument(tmp_path)
             full_text = "\n".join([para.text for para in doc.paragraphs if para.text])
             metadata = extract_metadata(full_text, "document")
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "document", file_path, metadata, images=images)
-            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+            chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== XLSX ====================
         elif suffix in [".xlsx", ".xls"]:
             if UNSTRUCTURED_AVAILABLE:
-                print(f"🔧 Using Unstructured.io for Excel: {file.filename}")
+                print(f"ðŸ”§ Using Unstructured.io for Excel: {file.filename}")
                 try:
                     chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "xlsx")
                     if chunks_with_metadata:
@@ -3796,9 +3797,9 @@ async def upload_file(file: UploadFile = File(...)):
                         )
                         element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                         os.unlink(tmp_path)
-                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔧 ({element_summary})", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                        return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {num_chunks} chunks ðŸ”§ ({element_summary})", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
                 except Exception as e:
-                    print(f"⚠️ Unstructured Excel failed: {e}, using fallback")
+                    print(f"âš ï¸ Unstructured Excel failed: {e}, using fallback")
             
             from openpyxl import load_workbook
             wb = load_workbook(tmp_path)
@@ -3812,9 +3813,9 @@ async def upload_file(file: UploadFile = File(...)):
                         full_text += row_text + "\n"
             metadata = extract_metadata(full_text, "spreadsheet")
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "spreadsheet", file_path, metadata)
-            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+            chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== PPTX ====================
         elif suffix == ".pptx":
@@ -3822,7 +3823,7 @@ async def upload_file(file: UploadFile = File(...)):
             images = extract_images_from_pptx(tmp_path, doc_id)
             
             if UNSTRUCTURED_AVAILABLE:
-                print(f"🔧 Using Unstructured.io for PPTX: {file.filename}")
+                print(f"ðŸ”§ Using Unstructured.io for PPTX: {file.filename}")
                 try:
                     chunks_with_metadata, chunker_type = parse_with_unstructured(tmp_path, "pptx")
                     if chunks_with_metadata:
@@ -3834,9 +3835,9 @@ async def upload_file(file: UploadFile = File(...)):
                         )
                         element_summary = ", ".join([f"{v} {k}" for k, v in element_types.items()])
                         os.unlink(tmp_path)
-                        return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {num_chunks} chunks 🔧 ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
+                        return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {num_chunks} chunks ðŸ”§ ({element_summary}), {len(images)} images", chunks=num_chunks, chunker_type=chunker_type, element_types=element_types)
                 except Exception as e:
-                    print(f"⚠️ Unstructured PPTX failed: {e}, using fallback")
+                    print(f"âš ï¸ Unstructured PPTX failed: {e}, using fallback")
             
             from pptx import Presentation
             prs = Presentation(tmp_path)
@@ -3848,9 +3849,9 @@ async def upload_file(file: UploadFile = File(...)):
                         full_text += shape.text + "\n"
             metadata = extract_metadata(full_text, "presentation")
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "presentation", file_path, metadata, images=images)
-            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+            chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"âœ… Ingested {file.filename} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== Audio/Video ====================
         elif suffix in [".mp4", ".mp3", ".wav", ".m4a", ".webm", ".avi", ".mov"]:
@@ -3858,7 +3859,7 @@ async def upload_file(file: UploadFile = File(...)):
             if file_size_mb > 25:
                 os.unlink(tmp_path)
                 os.remove(file_path)
-                return IngestResponse(success=False, message=f"❌ File too large ({file_size_mb:.1f}MB). Maximum size is 25MB for audio/video transcription.")
+                return IngestResponse(success=False, message=f"âŒ File too large ({file_size_mb:.1f}MB). Maximum size is 25MB for audio/video transcription.")
             
             from openai import OpenAI
             client = OpenAI()
@@ -3868,9 +3869,9 @@ async def upload_file(file: UploadFile = File(...)):
             full_text = transcription.text
             metadata = extract_metadata(full_text, "video")
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "video", file_path, metadata)
-            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+            chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Transcribed {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"âœ… Transcribed {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         # ==================== Images (Enhanced Prompt) ====================
         elif suffix in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
@@ -3924,9 +3925,9 @@ Extract all text and data from the image:"""
             full_text = response.content
             metadata = extract_metadata(full_text, "image")
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, file.filename, "image", file_path, metadata)
-            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+            chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
             os.unlink(tmp_path)
-            return IngestResponse(success=True, message=f"✅ Processed {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"âœ… Processed {file.filename} with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
         
         else:
             os.unlink(tmp_path)
@@ -3948,14 +3949,14 @@ def scrape_website(request: UrlRequest):
         
         # Extract images BEFORE parsing
         images = extract_images_from_page(url, html_content)
-        print(f"🖼️ Extracted {len(images)} images from {url}")
+        print(f"ðŸ–¼ï¸ Extracted {len(images)} images from {url}")
         
         from urllib.parse import urlparse
         domain = urlparse(url).netloc
         
         # Use Unstructured.io for smart parsing
         if UNSTRUCTURED_AVAILABLE:
-            print(f"🔧 Using Unstructured.io for {url}")
+            print(f"ðŸ”§ Using Unstructured.io for {url}")
             full_text, chunks_with_metadata, chunker_type = parse_html_with_unstructured(html_content, url)
             
             if not full_text or not chunks_with_metadata:
@@ -3972,14 +3973,14 @@ def scrape_website(request: UrlRequest):
             
             return IngestResponse(
                 success=True, 
-                message=f"✅ Scraped {domain} with {num_chunks} chunks 🔧 ({element_summary}), {len(images)} images", 
+                message=f"âœ… Scraped {domain} with {num_chunks} chunks ðŸ”§ ({element_summary}), {len(images)} images", 
                 chunks=num_chunks, 
                 chunker_type=chunker_type,
                 element_types=element_types
             )
         else:
             # Fallback to BeautifulSoup
-            print(f"⚠️ Unstructured not available, using BeautifulSoup for {url}")
+            print(f"âš ï¸ Unstructured not available, using BeautifulSoup for {url}")
             soup = BeautifulSoup(html_content, 'html.parser')
             for element in soup(['script', 'style', 'nav', 'footer', 'header']):
                 element.decompose()
@@ -3993,9 +3994,9 @@ def scrape_website(request: UrlRequest):
             
             metadata = extract_metadata(full_text, "website")
             chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, url, "website", "", metadata, images=images)
-            chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+            chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
             
-            return IngestResponse(success=True, message=f"✅ Scraped {domain} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
+            return IngestResponse(success=True, message=f"âœ… Scraped {domain} with {chunks} chunks {chunker_emoji}, {len(images)} images", chunks=chunks, chunker_type=chunker_type)
     
     except Exception as e:
         return IngestResponse(success=False, message=str(e))
@@ -4203,8 +4204,8 @@ def scrape_website_recursive(request: RecursiveScrapeRequest):
                 chunks, chunker_type = ingest_document_with_semantic_chunks(text_content, current_url, "website", "", metadata, images=images)
                 total_chunks += chunks
                 pages_scraped.append(current_url)
-                chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
-                print(f"✅ Scraped: {current_url} ({chunks} chunks {chunker_emoji}, {len(images)} images)")
+                chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
+                print(f"âœ… Scraped: {current_url} ({chunks} chunks {chunker_emoji}, {len(images)} images)")
             except Exception as e:
                 print(f"Error ingesting {current_url}: {e}")
                 continue
@@ -4228,7 +4229,7 @@ def scrape_website_recursive(request: RecursiveScrapeRequest):
         
         return RecursiveScrapeResponse(
             success=True,
-            message=f"✅ Scraped {len(pages_scraped)} pages from {domain} with {total_chunks} total chunks",
+            message=f"âœ… Scraped {len(pages_scraped)} pages from {domain} with {total_chunks} total chunks",
             total_pages=len(pages_scraped),
             total_chunks=total_chunks,
             pages_scraped=pages_scraped
@@ -4267,9 +4268,9 @@ def process_youtube(request: UrlRequest):
         
         metadata = extract_metadata(full_text, "youtube video")
         chunks, chunker_type = ingest_document_with_semantic_chunks(full_text, url, "youtube", "", metadata)
-        chunker_emoji = "🧠" if chunker_type == "semantic" else "📏"
+        chunker_emoji = "ðŸ§ " if chunker_type == "semantic" else "ðŸ“"
         
-        return IngestResponse(success=True, message=f"✅ Processed YouTube with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
+        return IngestResponse(success=True, message=f"âœ… Processed YouTube with {chunks} chunks {chunker_emoji}", chunks=chunks, chunker_type=chunker_type)
     
     except Exception as e:
         return IngestResponse(success=False, message=str(e))
@@ -5120,7 +5121,7 @@ Response:"""
     prompt_tokens = len(prompt) // 4
     
     if prompt_tokens > MAX_TOTAL_TOKENS:
-        print(f"⚠️ Prompt too large ({prompt_tokens} tokens), truncating context...")
+        print(f"âš ï¸ Prompt too large ({prompt_tokens} tokens), truncating context...")
         # Calculate how much to reduce
         excess_tokens = prompt_tokens - MAX_TOTAL_TOKENS + 1000  # Extra buffer
         excess_chars = excess_tokens * 4
@@ -5162,7 +5163,7 @@ Simply COPY the exact line like: ![Screenshot 1](/doc-images/xxx.jpeg)
 Place screenshots after the relevant step they illustrate.
 
 Response:"""
-            print(f"✅ Prompt reduced to ~{len(prompt) // 4} tokens")
+            print(f"âœ… Prompt reduced to ~{len(prompt) // 4} tokens")
     
     # Start generate step tracking
     if tracker:
@@ -5202,7 +5203,7 @@ Instructions:
     full_response = ""
     
     try:
-        # Use streaming LLM with async - استخدم astream بدل stream
+        # Use streaming LLM with async - Ø§Ø³ØªØ®Ø¯Ù… astream Ø¨Ø¯Ù„ stream
         streaming_llm = ChatOpenAI(model="gpt-4o", temperature=0.7, streaming=True)
         
         async for chunk in streaming_llm.astream(prompt):
@@ -5329,8 +5330,8 @@ async def export_to_word(request: ExportRequest):
         from PIL import Image as PILImage
         
         try:
-            print(f"🖼️ Trying to load image: {img_url}")
-            print(f"📁 DOC_IMAGES_FOLDER: {DOC_IMAGES_FOLDER}")
+            print(f"ðŸ–¼ï¸ Trying to load image: {img_url}")
+            print(f"ðŸ“ DOC_IMAGES_FOLDER: {DOC_IMAGES_FOLDER}")
             
             image_data = None
             
@@ -5338,19 +5339,19 @@ async def export_to_word(request: ExportRequest):
             if img_url.startswith('/doc-images/'):
                 filename = img_url.replace('/doc-images/', '')
                 local_path = os.path.join(DOC_IMAGES_FOLDER, filename)
-                print(f"📍 Local path: {local_path}")
-                print(f"✅ File exists: {os.path.exists(local_path)}")
+                print(f"ðŸ“ Local path: {local_path}")
+                print(f"âœ… File exists: {os.path.exists(local_path)}")
                 
                 if os.path.exists(local_path):
                     with open(local_path, 'rb') as f:
                         image_data = f.read()
-                    print(f"📦 Loaded {len(image_data)} bytes")
+                    print(f"ðŸ“¦ Loaded {len(image_data)} bytes")
                 else:
-                    print(f"❌ File not found at {local_path}")
+                    print(f"âŒ File not found at {local_path}")
                     return None
             else:
                 # Try to fetch from URL
-                print(f"🌐 Trying HTTP fetch for: {img_url}")
+                print(f"ðŸŒ Trying HTTP fetch for: {img_url}")
                 headers = {'User-Agent': 'Mozilla/5.0'}
                 response = requests.get(img_url, headers=headers, timeout=10)
                 if response.status_code == 200:
@@ -5360,7 +5361,7 @@ async def export_to_word(request: ExportRequest):
             
             if image_data:
                 # Convert to PNG using PIL for compatibility with python-docx
-                print(f"🔄 Converting image to PNG...")
+                print(f"ðŸ”„ Converting image to PNG...")
                 pil_img = PILImage.open(io.BytesIO(image_data))
                 
                 # Convert to RGB if necessary
@@ -5380,11 +5381,11 @@ async def export_to_word(request: ExportRequest):
                 png_buffer = io.BytesIO()
                 pil_img.save(png_buffer, format='PNG')
                 png_buffer.seek(0)
-                print(f"✅ Converted to PNG: {png_buffer.getbuffer().nbytes} bytes")
+                print(f"âœ… Converted to PNG: {png_buffer.getbuffer().nbytes} bytes")
                 return png_buffer
                 
         except Exception as e:
-            print(f"❌ Error loading/converting image {img_url}: {e}")
+            print(f"âŒ Error loading/converting image {img_url}: {e}")
             import traceback
             traceback.print_exc()
         return None
@@ -5419,9 +5420,9 @@ async def export_to_word(request: ExportRequest):
                 image_stream = get_image_from_url(img_url)
                 if image_stream:
                     try:
-                        print(f"📎 Adding picture to Word doc: {img_url}")
+                        print(f"ðŸ“Ž Adding picture to Word doc: {img_url}")
                         doc.add_picture(image_stream, width=Inches(5))
-                        print(f"✅ Picture added successfully!")
+                        print(f"âœ… Picture added successfully!")
                         
                         # Add caption
                         if alt_text:
@@ -5430,12 +5431,12 @@ async def export_to_word(request: ExportRequest):
                             cap_para.runs[0].font.size = Pt(10)
                             cap_para.runs[0].font.italic = True
                     except Exception as e:
-                        print(f"❌ Error adding picture: {e}")
+                        print(f"âŒ Error adding picture: {e}")
                         import traceback
                         traceback.print_exc()
                         doc.add_paragraph(f"[Image: {alt_text or 'Could not load'}]")
                 else:
-                    print(f"❌ No image stream for: {img_url}")
+                    print(f"âŒ No image stream for: {img_url}")
                     doc.add_paragraph(f"[Image: {alt_text or 'Could not load'}]")
                 
                 last_end = match.end()
@@ -5910,6 +5911,38 @@ def debug_prompt(query: str):
         "images": images,
         "context_preview": doc_context[:500] if doc_context else "No context"
     }
+
+
+
+# ==================== Configuration Endpoints ====================
+
+@app.get("/config/presets")
+def get_config_presets():
+    """Get available configuration presets for the frontend"""
+    return {
+        "presets": get_preset_info(),
+        "defaults": AgentConfig().to_dict()
+    }
+
+@app.get("/config/current")
+def get_current_config():
+    """Get current default configuration"""
+    return AgentConfig().to_dict()
+
+@app.post("/config/validate")
+def validate_config(settings: dict):
+    """Validate user configuration settings"""
+    try:
+        config = AgentConfig.from_user_settings(settings)
+        return {
+            "valid": True,
+            "config": config.to_dict()
+        }
+    except Exception as e:
+        return {
+            "valid": False,
+            "error": str(e)
+        }
 
 # ==================== Run Server ====================
 
