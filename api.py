@@ -99,7 +99,7 @@ os.makedirs(CONVERSATIONS_FOLDER, exist_ok=True)
 os.makedirs(DOCUMENTS_FOLDER, exist_ok=True)
 
 # FastAPI app
-app = FastAPI(title="RAG Agent API", version="3.0.0")  # Major update with configurable settings
+app = FastAPI(title="RAG Agent API", version="3.1.0")  # Improved agent intelligence + forced search
 
 # CORS middleware
 app.add_middleware(
@@ -2929,17 +2929,17 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_knowledge_base",
-            "description": "Search the internal knowledge base for information. Use this FIRST for any question. The knowledge base contains curated pricing data, documentation, and specific information the user has added.",
+            "description": "MANDATORY FIRST STEP: Search the knowledge base before answering ANY question. Contains pricing data, specs, and documentation. You MUST use this tool for EVERY question - never answer from memory. For comparisons, search EACH provider separately.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The search query. Be specific and use relevant keywords."
+                        "description": "Search query. Be specific: include product names, shape codes (E4, X9), 'pricing', 'cost', etc."
                     },
                     "top_k": {
                         "type": "integer",
-                        "description": "Number of results to return (default: 10)",
+                        "description": "Number of results (default: 10, use 15-20 for comparisons)",
                         "default": 10
                     }
                 },
@@ -2951,13 +2951,13 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_web",
-            "description": "Search the internet for current information. Use this when: 1) Knowledge base doesn't have the specific info needed, 2) You need to fill gaps in a comparison, 3) You need the most current/updated information. This searches the live internet.",
+            "description": "Search the internet when knowledge base doesn't have the info. Use for: current prices not in KB, filling gaps in comparisons, latest information.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The web search query. Be specific."
+                        "description": "Web search query. Be specific with product names and 'pricing 2024'."
                     }
                 },
                 "required": ["query"]
@@ -2968,7 +2968,7 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "list_available_sources",
-            "description": "List all available sources/documents in the knowledge base. Use this to see what information is available before searching.",
+            "description": "List all documents/sources in the knowledge base. Use to see what data is available.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -2980,13 +2980,13 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_source_content",
-            "description": "Get all content from a specific source. Use this when you need comprehensive information from a particular document or website.",
+            "description": "Get full content from a specific source. Use when you need all details from a document.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "source_name": {
                         "type": "string",
-                        "description": "The name or URL of the source to retrieve"
+                        "description": "The name or URL of the source"
                     }
                 },
                 "required": ["source_name"]
@@ -3215,39 +3215,53 @@ async def run_agent_with_streaming(question: str, user_id: str, conversation_id:
     messages_history = []
     
     if conv and conv.get('messages'):
-        # Add recent conversation for context (last 6 messages)
-        for msg in conv['messages'][-15:]:  # More conversation history
+        # Add recent conversation for context (last 15 messages)
+        for msg in conv['messages'][-15:]:
             role = "user" if msg['role'] == 'user' else "assistant"
             messages_history.append({
                 "role": role,
-                "content": msg['content'][:3000]  # Larger content window  # Limit size
+                "content": msg['content'][:3000]
             })
+    
+    # Add a search reminder to the question if there's conversation history
+    # This helps prevent the agent from answering from memory
+    search_reminder = ""
+    if messages_history:
+        search_reminder = "\n\n[SYSTEM REMINDER: This is a follow-up question. You MUST search the knowledge base again before answering. Do NOT rely on previous conversation - search to verify/get fresh data.]"
     
     # Build messages for the agent
     messages = [
         {"role": "system", "content": system_prompt}
     ] + messages_history + [
-        {"role": "user", "content": question}
+        {"role": "user", "content": question + search_reminder}
     ]
     
     # Track sources found
     all_sources = []
     tool_calls_made = []
     
-    # Agent loop - max 5 iterations
-    max_iterations = 12  # Increased for deeper research
+    # Agent loop - max 12 iterations for thorough research
+    max_iterations = 12
     iteration = 0
+    searches_done = 0  # Track how many searches were done
     
     while iteration < max_iterations:
         iteration += 1
+        
+        # Force tool use for first 2 iterations, then auto
+        # This ensures at least 1-2 searches are done
+        if iteration <= 2 and searches_done == 0:
+            tool_choice = "required"
+        else:
+            tool_choice = "auto"
         
         # Call OpenAI with tools
         response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
             tools=AGENT_TOOLS,
-            tool_choice="auto",
-            temperature=0.7
+            tool_choice=tool_choice,
+            temperature=0.2  # Lower temperature for more precise/factual answers
         )
         
         assistant_message = response.choices[0].message
@@ -3288,6 +3302,10 @@ async def run_agent_with_streaming(question: str, user_id: str, conversation_id:
                 
                 # Execute tool
                 result = execute_tool(tool_name, arguments)
+                
+                # Track searches done (for forcing search logic)
+                if tool_name in ["search_knowledge_base", "search_web"]:
+                    searches_done += 1
                 
                 # Track tool call
                 tool_calls_made.append({
@@ -3337,14 +3355,14 @@ async def run_agent_with_streaming(question: str, user_id: str, conversation_id:
     yield f"data: {json.dumps(sources_msg)}\n\n"
     
     # Stream the final answer
-    thinking_msg = {"type": "thinking", "step": "generating", "detail": "Writing answer..."}
+    thinking_msg = {"type": "thinking", "step": "generating", "detail": "Writing answer based on search results..."}
     yield f"data: {json.dumps(thinking_msg)}\n\n"
     
     # Get streaming response for final answer
     stream = openai_client.chat.completions.create(
         model="gpt-4o",
         messages=messages,
-        temperature=0.7,
+        temperature=0.3,  # Lower for factual accuracy
         stream=True
     )
     

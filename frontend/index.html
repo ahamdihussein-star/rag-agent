@@ -1495,16 +1495,19 @@
         }
         
         .thinking-container {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-            border: 1px solid rgba(139, 92, 246, 0.3);
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(139, 92, 246, 0.4);
             border-radius: 12px;
-            padding: 12px;
-            margin-bottom: 8px;
+            padding: 14px;
+            margin-bottom: 12px;
             transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(139, 92, 246, 0.15);
         }
         
         .thinking-container.collapsed {
-            padding: 8px 12px;
+            padding: 10px 14px;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
+            border-color: rgba(16, 185, 129, 0.3);
         }
         
         .thinking-container.collapsed .thinking-steps {
@@ -1514,12 +1517,17 @@
         .thinking-header {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             cursor: pointer;
+            padding: 4px 0;
+        }
+        
+        .thinking-header:hover {
+            opacity: 0.85;
         }
         
         .thinking-icon {
-            font-size: 16px;
+            font-size: 18px;
             animation: pulse 1.5s ease-in-out infinite;
         }
         
@@ -1528,20 +1536,25 @@
         }
         
         .thinking-title {
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 600;
             color: #a78bfa;
         }
         
+        .thinking-container.collapsed .thinking-title {
+            color: #10b981;
+        }
+        
         .thinking-toggle {
             margin-left: auto;
-            color: #888;
-            font-size: 10px;
+            color: #a78bfa;
+            font-size: 12px;
             transition: transform 0.3s ease;
         }
         
         .thinking-container.collapsed .thinking-toggle {
             transform: rotate(-90deg);
+            color: #10b981;
         }
         
         .thinking-steps {
@@ -1549,53 +1562,85 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
+            max-height: 300px;
+            overflow-y: auto;
         }
         
         .thinking-step {
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 8px 12px;
-            background: rgba(0, 0, 0, 0.2);
+            padding: 10px 14px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1));
             border-radius: 8px;
-            font-size: 12px;
+            font-size: 13px;
+            border-left: 3px solid #a78bfa;
+            transition: all 0.3s ease;
+        }
+        
+        .thinking-step.animate-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        .thinking-step.completed {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
+            border-left-color: #10b981;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
         }
         
         .step-icon {
-            font-size: 14px;
-            min-width: 20px;
+            font-size: 16px;
+            min-width: 24px;
+            text-align: center;
         }
         
         .step-text {
             flex: 1;
-            color: #ccc;
+            color: #e0e0e0;
             word-break: break-word;
+            font-weight: 500;
         }
         
         .step-spinner {
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
             border: 2px solid rgba(167, 139, 250, 0.3);
             border-top-color: #a78bfa;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            animation: spin 0.8s linear infinite;
         }
         
         .step-result {
-            font-size: 11px;
+            font-size: 12px;
             white-space: nowrap;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 500;
         }
         
         .result-success {
             color: #10b981;
+            background: rgba(16, 185, 129, 0.15);
         }
         
         .result-empty {
             color: #f59e0b;
+            background: rgba(245, 158, 11, 0.15);
         }
         
         .result-error {
             color: #ef4444;
+            background: rgba(239, 68, 68, 0.15);
         }
         
         /* Beautiful Markdown Tables - Responsive */
@@ -2035,7 +2080,7 @@
                     </div>
 
                     <div class="panel">
-                        <h3>🌐 Add Website</h3>
+                        <h3>🌐 Add Website</h3>
                         <div class="url-input-group">
                             <input type="url" class="url-input" id="website-input" placeholder="https://example.com/docs">
                             <button class="add-btn" onclick="addWebsite()">Add</button>
@@ -2101,7 +2146,7 @@
                             <!-- Current Action Detail -->
                             <div style="margin-top: 10px; padding: 8px 10px; background: rgba(0,217,255,0.1); border-radius: 8px; border-left: 3px solid #00d9ff;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span id="website-action-icon" style="font-size: 14px;">🌐</span>
+                                    <span id="website-action-icon" style="font-size: 14px;">🌐</span>
                                     <span id="website-progress-text" style="font-size: 11px; color: #ccc; word-break: break-all;">Starting...</span>
                                 </div>
                             </div>
@@ -2435,11 +2480,11 @@
 
             // Tool icons mapping
             const toolIcons = {
-                'search_knowledge_base': '🔍',
-                'search_web': '🌐',
+                'search_knowledge_base': '🔍',
+                'search_web': '🌐',
                 'list_available_sources': '📋',
                 'get_source_content': '📄',
-                'generating': '✍ï¸'
+                'generating': '✍️'
             };
 
             try {
@@ -2459,22 +2504,41 @@
                 // Use Agentic RAG endpoint
                 const eventSource = new EventSource(`${API_URL}/chat/agent?${params}`);
                 let tokenInfo = null;
+                let searchCount = 0;  // Live search counter
+                
+                // Function to update thinking header with live count
+                function updateThinkingHeader() {
+                    const thinkingHeader = thinkingContainer.querySelector('.thinking-header');
+                    if (thinkingHeader) {
+                        const titleSpan = thinkingHeader.querySelector('.thinking-title');
+                        if (titleSpan) {
+                            titleSpan.textContent = searchCount > 0 
+                                ? `🔄 Searching... (${searchCount} done)` 
+                                : '🧠 Agent Working...';
+                        }
+                    }
+                }
                 
                 eventSource.onmessage = function(event) {
                     try {
                         const data = JSON.parse(event.data);
 
                         if (data.type === 'thinking') {
-                            // Show thinking step
+                            // Show thinking step with animation
                             const stepIcon = toolIcons[data.step] || '💭';
                             const stepDiv = document.createElement('div');
-                            stepDiv.className = 'thinking-step';
+                            stepDiv.className = 'thinking-step animate-in';
                             stepDiv.innerHTML = `
                                 <span class="step-icon">${stepIcon}</span>
                                 <span class="step-text">${getThinkingText(data.step, data.detail)}</span>
                                 <span class="step-spinner"></span>
                             `;
                             thinkingSteps.appendChild(stepDiv);
+                            
+                            // Make sure thinking container is visible and expanded
+                            thinkingContainer.style.display = 'block';
+                            thinkingContainer.classList.remove('collapsed');
+                            
                             messagesDiv.scrollTop = messagesDiv.scrollHeight;
                             
                         } else if (data.type === 'tool_result') {
@@ -2485,15 +2549,21 @@
                                 if (spinner) {
                                     spinner.className = 'step-result';
                                     if (data.success && data.found > 0) {
-                                        spinner.innerHTML = `<span class="result-success">✓ Found ${data.found} results</span>`;
+                                        spinner.innerHTML = `<span class="result-success">✅ Found ${data.found} results</span>`;
                                     } else if (data.success) {
-                                        spinner.innerHTML = `<span class="result-empty">○ No results</span>`;
+                                        spinner.innerHTML = `<span class="result-empty">⚪ No results</span>`;
                                     } else {
-                                        spinner.innerHTML = `<span class="result-error">✗ Failed</span>`;
+                                        spinner.innerHTML = `<span class="result-error">❌ Failed</span>`;
                                     }
                                 }
+                                // Mark step as completed
+                                lastStep.classList.add('completed');
                             }
                             toolCalls.push(data);
+                            
+                            // Update live counter
+                            searchCount++;
+                            updateThinkingHeader();
                             
                         } else if (data.type === 'sources') {
                             sources = data.data;
@@ -2624,7 +2694,7 @@
             let html = '<div class="sources"><div class="sources-title">📁š Sources</div><ul>';
             sources.forEach(source => {
                 const icon = source.type === 'youtube' ? '🎬' : 
-                            source.type === 'website' ? '🌐' : 
+                            source.type === 'website' ? '🌐' : 
                             source.type === 'video' ? '🎥' :
                             source.type === 'image' ? '🖼ï¸' :
                             source.type === 'memory' ? '🧠' :
@@ -2731,7 +2801,7 @@
                             </div>
                         </div>
                         <div class="token-formula">
-                            <small>📁 ${tokenInfo.formula}</small>
+                            <small>📁 ${tokenInfo.formula}</small>
                         </div>
                         ${suggestionsHtml}
                     </div>
