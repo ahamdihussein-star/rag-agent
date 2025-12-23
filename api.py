@@ -3906,10 +3906,10 @@ async def upload_file(file: UploadFile = File(...)):
                 texts_to_embed = [c["text"] for c in chunks_data]
                 
                 print(f"🚀 Starting batch embedding for {len(texts_to_embed)} CSV chunks...")
-                embeddings = embeddings_model.embed_documents(texts_to_embed)
-                print(f"✅ Batch embedding complete: {len(embeddings)} vectors")
+                chunk_embeddings = embeddings.embed_documents(texts_to_embed)
+                print(f"✅ Batch embedding complete: {len(chunk_embeddings)} vectors")
                 
-                for idx, (chunk_data, embedding) in enumerate(zip(chunks_data, embeddings)):
+                for idx, (chunk_data, embedding) in enumerate(zip(chunks_data, chunk_embeddings)):
                     chunk_id = f"{doc_id}_chunk_{idx}"
                     
                     # Keep metadata small - truncate content preview
@@ -3932,14 +3932,6 @@ async def upload_file(file: UploadFile = File(...)):
                         "values": embedding,
                         "metadata": metadata
                     })
-                    
-                    # Also add to BM25 index
-                    bm25_documents[chunk_id] = {
-                        "content": chunk_data["text"][:2000],  # Limit BM25 content too
-                        "source": file_path,
-                        "title": metadata["title"],
-                        "type": "spreadsheet"
-                    }
                 
                 # Upsert to Pinecone in batches
                 BATCH_SIZE = 50
@@ -3949,8 +3941,11 @@ async def upload_file(file: UploadFile = File(...)):
                 
                 print(f"✅ Upserted {len(vectors_to_upsert)} vectors to Pinecone")
                 
-                # Rebuild BM25 index
-                rebuild_bm25_index()
+                # Add to BM25 index
+                bm25_chunks = [c["text"][:2000] for c in chunks_data]  # Limit text size
+                bm25_metadata = [{"source": file_path, "title": f"{file.filename} (Rows {c['row_start']}-{c['row_end']})", "type": "spreadsheet"} for c in chunks_data]
+                add_to_bm25_index(bm25_chunks, bm25_metadata)
+                print(f"✅ Added {len(bm25_chunks)} chunks to BM25 index")
                 
                 os.unlink(tmp_path)
                 return IngestResponse(
