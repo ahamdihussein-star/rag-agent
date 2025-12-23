@@ -1935,7 +1935,7 @@
         <div class="sidebar-header">
             <h2>💬 Conversations</h2>
             <button class="new-chat-btn" onclick="newChat()">
-                <span>âž•</span> New Chat
+                <span>➕</span> New Chat
             </button>
         </div>
         <div class="conversations-list" id="conversations-list">
@@ -1946,7 +1946,7 @@
                 <span>📊</span> Pipeline Monitor
             </a>
             <a href="/admin" class="admin-link">
-                <span>⚙ï¸</span> Admin Dashboard
+                <span>⚙️</span> Admin Dashboard
             </a>
         </div>
     </div>
@@ -1982,7 +1982,7 @@
                                     <span class="label">tokens</span>
                                 </div>
                                 <div class="token-preview-stat total-cost">
-                                    <span class="label">Total â‰ˆ</span>
+                                    <span class="label">Total ≈</span>
                                     <span class="value" id="preview-cost">$0.00</span>
                                 </div>
                                 <span class="expand-arrow" id="cost-expand-arrow">▼</span>
@@ -2132,7 +2132,7 @@
                                     <span id="website-progress-step" style="font-size: 13px; font-weight: 600; color: #fff;">Initializing...</span>
                                 </div>
                                 <div style="text-align: right;">
-                                    <div id="website-eta" style="font-size: 12px; color: #00ff88; font-weight: 600;">â±ï¸ Calculating...</div>
+                                    <div id="website-eta" style="font-size: 12px; color: #00ff88; font-weight: 600;">⏱ Calculating...</div>
                                     <div id="website-progress-percent" style="font-size: 11px; color: #888;">0%</div>
                                 </div>
                             </div>
@@ -2707,7 +2707,7 @@
                     : `<span>${source.title || source.source}</span>`;
                 
                 let downloadHtml = source.download_url 
-                    ? `<a href="${API_URL}${source.download_url}" class="download-btn" download>â¬‡ï¸ Download</a>` 
+                    ? `<a href="${API_URL}${source.download_url}" class="download-btn" download>⬇ Download</a>` 
                     : '';
                 
                 html += `<li><span>${icon}</span> ${linkHtml} ${downloadHtml} <span class="score">${Math.round(source.score * 100)}%</span></li>`;
@@ -2763,7 +2763,7 @@
                         <span class="token-icon">📊</span>
                         <span class="token-summary">
                             <strong>${tokenInfo.total_tokens.toLocaleString()}</strong> tokens
-                            <span class="token-cost">â‰ˆ $${tokenInfo.cost.toFixed(4)}</span>
+                            <span class="token-cost">≈ $${tokenInfo.cost.toFixed(4)}</span>
                         </span>
                         <span class="expand-icon">▼</span>
                     </div>
@@ -2841,7 +2841,7 @@
         async function exportToWord(encodedContent) {
             const btn = event.target.closest('.export-btn');
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<span>â³</span> Generating...';
+            btn.innerHTML = '<span>⏳</span> Generating...';
             btn.disabled = true;
             
             try {
@@ -2886,7 +2886,7 @@
         async function exportToPDF(encodedContent) {
             const btn = event.target.closest('.export-btn');
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<span>â³</span> Generating...';
+            btn.innerHTML = '<span>⏳</span> Generating...';
             btn.disabled = true;
             
             try {
@@ -3013,7 +3013,7 @@
                         clearInterval(interval);
                         progressBar.style.width = '100%';
                         progressPercent.textContent = '100%';
-                        progressText.textContent = 'âœ… Complete!';
+                        progressText.textContent = '✅ Complete!';
                         statusDiv.className = data.success ? 'status success' : 'status error';
                         
                         // Create chunker badge
@@ -3023,8 +3023,8 @@
                             chunkerBadge = `<span class="chunker-badge ${data.chunker_type}">${isSemantic ? '🧠' : '📁'} ${isSemantic ? 'Semantic' : 'Fallback'}</span>`;
                         }
                         statusDiv.innerHTML = data.success 
-                            ? `âœ… ${data.message}${chunkerBadge}` 
-                            : `âŒ ${data.message}`;
+                            ? `✅ ${data.message}${chunkerBadge}` 
+                            : `❌ ${data.message}`;
                         
                         if (data.success) { 
                             loadStats(); 
@@ -3036,14 +3036,14 @@
                         }, 3000);
                     } else {
                         statusDiv.className = 'status error';
-                        statusDiv.textContent = 'âŒ Upload failed';
+                        statusDiv.textContent = '❌ Upload failed';
                         progressContainer.style.display = 'none';
                     }
                 });
                 
                 xhr.addEventListener('error', () => {
                     statusDiv.className = 'status error';
-                    statusDiv.textContent = 'âŒ Upload failed';
+                    statusDiv.textContent = '❌ Upload failed';
                     progressContainer.style.display = 'none';
                 });
                 
@@ -3052,7 +3052,7 @@
                 
             } catch (error) {
                 statusDiv.className = 'status error';
-                statusDiv.textContent = 'âŒ Upload failed';
+                statusDiv.textContent = '❌ Upload failed';
                 progressContainer.style.display = 'none';
             }
         }
@@ -3110,12 +3110,12 @@
                             if (data.step === 'page_done' && data.page_url) {
                                 scrapedPages.push(data.page_url);
                                 pagesContainer.style.display = 'block';
-                                pagesList.innerHTML = scrapedPages.map(p => `<div style="padding: 2px 0; word-break: break-all;">â€¢ ${p}</div>`).join('');
+                                pagesList.innerHTML = scrapedPages.map(p => `<div style="padding: 2px 0; word-break: break-all;">• ${p}</div>`).join('');
                             }
                         } else if (data.type === 'done') {
                             progressBar.style.width = '100%';
                             progressPercent.textContent = '100%';
-                            progressText.textContent = 'âœ… Complete!';
+                            progressText.textContent = '✅ Complete!';
                             statusDiv.className = 'status success';
                             
                             // Add chunker badge if available
@@ -3135,7 +3135,7 @@
                             }, 3000);
                         } else if (data.type === 'error') {
                             statusDiv.className = 'status error';
-                            statusDiv.textContent = 'âŒ ' + data.message;
+                            statusDiv.textContent = '❌ ' + data.message;
                             progressContainer.style.display = 'none';
                             eventSource.close();
                         }
@@ -3143,14 +3143,14 @@
                     
                     eventSource.onerror = () => {
                         statusDiv.className = 'status error';
-                        statusDiv.textContent = 'âŒ Connection error';
+                        statusDiv.textContent = '❌ Connection error';
                         progressContainer.style.display = 'none';
                         eventSource.close();
                     };
                     
                 } catch (error) {
                     statusDiv.className = 'status error';
-                    statusDiv.textContent = 'âŒ Failed to scrape recursively';
+                    statusDiv.textContent = '❌ Failed to scrape recursively';
                     progressContainer.style.display = 'none';
                 }
             } else {
@@ -3170,7 +3170,7 @@
                         } else if (data.type === 'done') {
                             progressBar.style.width = '100%';
                             progressPercent.textContent = '100%';
-                            progressText.textContent = 'âœ… Complete!';
+                            progressText.textContent = '✅ Complete!';
                             statusDiv.className = 'status success';
                             
                             // Add chunker badge if available
@@ -3189,7 +3189,7 @@
                             }, 3000);
                         } else if (data.type === 'error') {
                             statusDiv.className = 'status error';
-                            statusDiv.textContent = 'âŒ ' + data.message;
+                            statusDiv.textContent = '❌ ' + data.message;
                             progressContainer.style.display = 'none';
                             eventSource.close();
                         }
@@ -3197,14 +3197,14 @@
                     
                     eventSource.onerror = () => {
                         statusDiv.className = 'status error';
-                        statusDiv.textContent = 'âŒ Connection error';
+                        statusDiv.textContent = '❌ Connection error';
                         progressContainer.style.display = 'none';
                         eventSource.close();
                     };
                     
                 } catch (error) {
                     statusDiv.className = 'status error';
-                    statusDiv.textContent = 'âŒ Failed';
+                    statusDiv.textContent = '❌ Failed';
                     progressContainer.style.display = 'none';
                 }
             }
@@ -3242,7 +3242,7 @@
                     } else if (data.type === 'done') {
                         progressBar.style.width = '100%';
                         progressPercent.textContent = '100%';
-                        progressText.textContent = 'âœ… Complete!';
+                        progressText.textContent = '✅ Complete!';
                         statusDiv.className = 'status success';
                         
                         // Add chunker badge if available
@@ -3261,7 +3261,7 @@
                         }, 3000);
                     } else if (data.type === 'error') {
                         statusDiv.className = 'status error';
-                        statusDiv.textContent = 'âŒ ' + data.message;
+                        statusDiv.textContent = '❌ ' + data.message;
                         progressContainer.style.display = 'none';
                         eventSource.close();
                     }
@@ -3269,14 +3269,14 @@
                 
                 eventSource.onerror = () => {
                     statusDiv.className = 'status error';
-                    statusDiv.textContent = 'âŒ Connection error';
+                    statusDiv.textContent = '❌ Connection error';
                     progressContainer.style.display = 'none';
                     eventSource.close();
                 };
                 
             } catch (error) {
                 statusDiv.className = 'status error';
-                statusDiv.textContent = 'âŒ Failed';
+                statusDiv.textContent = '❌ Failed';
                 progressContainer.style.display = 'none';
             }
         }
@@ -3378,7 +3378,7 @@
                 suggestions.push({
                     type: 'question',
                     priority: 'medium',
-                    icon: 'âœ‚ï¸',
+                    icon: '✂',
                     title: 'Remove filler words',
                     description: `Words like "${foundFillers.slice(0, 2).join('", "')}" can be removed without changing the meaning.`,
                     savings: `~${foundFillers.length * 3} tokens`
@@ -3465,7 +3465,7 @@
             if (currentAnalysis.suggestions.length === 0) {
                 suggestionsContainer.innerHTML = `
                     <div class="no-suggestions">
-                        <div class="no-suggestions-icon">âœ…</div>
+                        <div class="no-suggestions-icon">✅</div>
                         <p>Your question looks optimized!</p>
                     </div>
                 `;
@@ -3667,7 +3667,7 @@
             
             <div class="optimization-actions">
                 <button class="opt-btn opt-btn-cancel" onclick="closeOptimizationModal()">Edit Query</button>
-                <button class="opt-btn opt-btn-send" onclick="sendFromModal()">Send Anyway â†’</button>
+                <button class="opt-btn opt-btn-send" onclick="sendFromModal()">Send Anyway →</button>
             </div>
         </div>
     </div>
