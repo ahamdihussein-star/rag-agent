@@ -3281,7 +3281,7 @@ async def run_agent_with_streaming(question: str, user_id: str, conversation_id:
         
         # Check if the model wants to use tools
         if assistant_message.tool_calls:
-            # If LLM provided reasoning before tool calls, stream it as thinking
+            # If LLM provided reasoning before tool calls, stream it
             if assistant_message.content and assistant_message.content.strip():
                 reasoning_msg = {
                     "type": "thinking",
@@ -3309,20 +3309,43 @@ async def run_agent_with_streaming(question: str, user_id: str, conversation_id:
             })
             
             # Execute each tool call
-            for tool_call in assistant_message.tool_calls:
+            for tool_idx, tool_call in enumerate(assistant_message.tool_calls):
                 tool_name = tool_call.function.name
                 try:
                     arguments = json.loads(tool_call.function.arguments)
                 except:
                     arguments = {}
                 
-                # Stream thinking
+                # Generate human-readable reasoning based on tool and query
+                query = arguments.get("query", "")
+                
+                # Auto-generate reasoning message
+                reasoning_texts = {
+                    "search_knowledge_base": f"Let me search the knowledge base for '{query}'...",
+                    "search_web": f"I'll search the web for more information about '{query}'...",
+                    "list_available_sources": "Let me check what sources are available in the knowledge base...",
+                    "get_source_content": f"I'll read the full content from this source..."
+                }
+                
+                reasoning_text = reasoning_texts.get(tool_name, f"Processing {tool_name}...")
+                
+                # Send reasoning event FIRST
+                reasoning_msg = {
+                    "type": "thinking",
+                    "step": "reasoning",
+                    "detail": reasoning_text
+                }
+                print(f"💭 Auto-reasoning: {reasoning_text}")
+                yield f"data: {json.dumps(reasoning_msg)}\n\n"
+                await asyncio.sleep(0.05)  # Small delay to ensure delivery
+                
+                # Stream the actual tool call
                 thinking_msg = {
                     "type": "thinking",
                     "step": tool_name,
-                    "detail": arguments.get("query", str(arguments))
+                    "detail": query or str(arguments)
                 }
-                print(f"🧠 Sending thinking event: {tool_name} - {arguments.get('query', '')[:50]}")
+                print(f"🧠 Sending thinking event: {tool_name} - {query[:50] if query else ''}")
                 yield f"data: {json.dumps(thinking_msg)}\n\n"
                 
                 # Force the event loop to process the yield before continuing
