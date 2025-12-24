@@ -3265,14 +3265,17 @@ async def run_agent_with_streaming(question: str, user_id: str, conversation_id:
         else:
             tool_choice = "auto"
         
-        # Call OpenAI with tools
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            tools=AGENT_TOOLS,
-            tool_choice=tool_choice,
-            temperature=0.2  # Lower temperature for more precise/factual answers
-        )
+        # Call OpenAI with tools (run in thread to avoid blocking)
+        def call_openai():
+            return openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                tools=AGENT_TOOLS,
+                tool_choice=tool_choice,
+                temperature=0.2  # Lower temperature for more precise/factual answers
+            )
+        
+        response = await asyncio.to_thread(call_openai)
         
         assistant_message = response.choices[0].message
         
@@ -3308,10 +3311,16 @@ async def run_agent_with_streaming(question: str, user_id: str, conversation_id:
                     "step": tool_name,
                     "detail": arguments.get("query", str(arguments))
                 }
+                print(f"🧠 Sending thinking event: {tool_name} - {arguments.get('query', '')[:50]}")
                 yield f"data: {json.dumps(thinking_msg)}\n\n"
                 
-                # Execute tool
-                result = execute_tool(tool_name, arguments)
+                # Force the event loop to process the yield before continuing
+                await asyncio.sleep(0)
+                
+                # Execute tool in a thread to avoid blocking the event loop
+                print(f"⚙️ Executing tool: {tool_name}...")
+                result = await asyncio.to_thread(execute_tool, tool_name, arguments)
+                print(f"✅ Tool {tool_name} completed: {result.get('results_count', 0)} results")
                 
                 # Track searches done (for forcing search logic)
                 if tool_name in ["search_knowledge_base", "search_web"]:
