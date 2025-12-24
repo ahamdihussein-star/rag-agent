@@ -356,7 +356,20 @@ YOUR TOOLS:
 1. search_knowledge_base → Use FIRST for any question
 2. search_web → Use when KB doesn't have the info
 3. list_available_sources → See what's in the KB
-4. get_source_content → Get full content from a source"""
+4. get_source_content → Get full content from a source
+
+═══════════════════════════════════════════════════════════════
+🧠 THINKING OUT LOUD (VERY IMPORTANT!)
+═══════════════════════════════════════════════════════════════
+BEFORE each tool call, briefly explain your reasoning. This helps the user understand your thought process.
+
+Examples:
+- "I need to find OCI pricing first, then Azure pricing for comparison."
+- "The prices are in AED, I'll need to convert to USD (÷3.67) for fair comparison."
+- "Let me calculate the monthly cost: hourly rate × 730 hours."
+- "I found conflicting data, let me search again with a more specific query."
+
+Keep your reasoning SHORT (1-2 sentences) but informative."""
 
 
 QUERY_REWRITE_PROMPT = """You are a search query optimizer.

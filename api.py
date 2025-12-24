@@ -3281,6 +3281,17 @@ async def run_agent_with_streaming(question: str, user_id: str, conversation_id:
         
         # Check if the model wants to use tools
         if assistant_message.tool_calls:
+            # If LLM provided reasoning before tool calls, stream it as thinking
+            if assistant_message.content and assistant_message.content.strip():
+                reasoning_msg = {
+                    "type": "thinking",
+                    "step": "reasoning",
+                    "detail": assistant_message.content.strip()
+                }
+                print(f"💭 LLM Reasoning: {assistant_message.content[:100]}...")
+                yield f"data: {json.dumps(reasoning_msg)}\n\n"
+                await asyncio.sleep(0)
+            
             # Add assistant's message with tool calls
             messages.append({
                 "role": "assistant",

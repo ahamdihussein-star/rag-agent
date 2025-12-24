@@ -1611,6 +1611,18 @@
             font-weight: 500;
         }
         
+        /* Special styling for reasoning/thinking steps */
+        .thinking-step.reasoning {
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.1));
+            border-left-color: #f59e0b;
+            font-style: italic;
+        }
+        
+        .thinking-step.reasoning .step-text {
+            color: #fcd34d;
+            font-style: italic;
+        }
+        
         .step-spinner {
             width: 18px;
             height: 18px;
@@ -2484,7 +2496,11 @@
                 'search_web': '🌐',
                 'list_available_sources': '📋',
                 'get_source_content': '📄',
-                'generating': '✍️'
+                'generating': '✍️',
+                'reasoning': '💭',
+                'calculating': '🔢',
+                'comparing': '⚖️',
+                'converting': '💱'
             };
 
             try {
@@ -2527,11 +2543,18 @@
                             // Show thinking step with animation
                             const stepIcon = toolIcons[data.step] || '💭';
                             const stepDiv = document.createElement('div');
-                            stepDiv.className = 'thinking-step animate-in';
+                            
+                            // Add special class for reasoning steps
+                            const isReasoning = data.step === 'reasoning';
+                            stepDiv.className = `thinking-step animate-in${isReasoning ? ' reasoning' : ''}`;
+                            
+                            // For reasoning, don't show spinner (it's instant thinking)
+                            const spinnerHtml = isReasoning ? '' : '<span class="step-spinner"></span>';
+                            
                             stepDiv.innerHTML = `
                                 <span class="step-icon">${stepIcon}</span>
                                 <span class="step-text">${getThinkingText(data.step, data.detail)}</span>
-                                <span class="step-spinner"></span>
+                                ${spinnerHtml}
                             `;
                             thinkingSteps.appendChild(stepDiv);
                             
@@ -2653,7 +2676,8 @@
                 'get_source_content': `📄 Reading source${detail ? ': ' + detail.substring(0, 40) : ''}`,
                 'generating': '✍️ Generating response...',
                 'analyzing': '🔬 Analyzing results...',
-                'comparing': '⚖️ Comparing data...'
+                'comparing': '⚖️ Comparing data...',
+                'reasoning': `💭 ${detail ? detail.substring(0, 150) + (detail.length > 150 ? '...' : '') : 'Thinking...'}`
             };
             return stepTexts[step] || `💭 ${step}${detail ? ': ' + detail : ''}`;
         }
