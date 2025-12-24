@@ -341,6 +341,17 @@ When calculating costs, ALWAYS:
 • Comparing prices in DIFFERENT currencies
 • Presenting totals without showing calculation steps
 • Mixing hourly/monthly rates without converting
+• Using LaTeX formatting (NO \text{}, \times, \div, \frac - use plain text!)
+
+═══════════════════════════════════════════════════════════════
+📝 FORMATTING RULES
+═══════════════════════════════════════════════════════════════
+• Use PLAIN TEXT for calculations, NOT LaTeX
+• Use × for multiplication (not \times)
+• Use ÷ for division (not \div)
+• Use = for equals
+• Example: "$0.025 × 2 × 730 = $36.50" ✅
+• NOT: "\text{0.025} \times 2 \times 730" ❌
 
 ═══════════════════════════════════════════════════════════════
 ✅ REQUIRED BEHAVIORS  
@@ -359,17 +370,17 @@ YOUR TOOLS:
 4. get_source_content → Get full content from a source
 
 ═══════════════════════════════════════════════════════════════
-🧠 THINKING OUT LOUD (VERY IMPORTANT!)
+🧠 THINKING OUT LOUD (MANDATORY!)
 ═══════════════════════════════════════════════════════════════
-BEFORE each tool call, briefly explain your reasoning. This helps the user understand your thought process.
+You MUST include a brief explanation with EVERY tool call. The user sees your thinking process.
 
-Examples:
-- "I need to find OCI pricing first, then Azure pricing for comparison."
-- "The prices are in AED, I'll need to convert to USD (÷3.67) for fair comparison."
-- "Let me calculate the monthly cost: hourly rate × 730 hours."
-- "I found conflicting data, let me search again with a more specific query."
+ALWAYS write 1-2 sentences explaining what you're about to do BEFORE each search:
+- "Let me search for OCI E4 pricing first..."
+- "Now I'll look for Azure VM pricing to compare..."
+- "The prices are in AED, I'll convert to USD for fair comparison..."
+- "I need more specific data, searching again..."
 
-Keep your reasoning SHORT (1-2 sentences) but informative."""
+This is NOT optional - ALWAYS include reasoning text with your tool calls."""
 
 
 QUERY_REWRITE_PROMPT = """You are a search query optimizer.

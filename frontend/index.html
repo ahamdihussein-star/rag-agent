@@ -2274,8 +2274,50 @@
             });
         }
 
+        // Clean up LaTeX formatting that LLM sometimes uses
+        function cleanLatexFormatting(content) {
+            if (!content) return content;
+            
+            // Remove \text{...} and keep the content
+            content = content.replace(/\\text\{([^}]*)\}/g, '$1');
+            
+            // Replace \times with ×
+            content = content.replace(/\\times/g, '×');
+            
+            // Replace \div with ÷
+            content = content.replace(/\\div/g, '÷');
+            
+            // Replace \frac{a}{b} with a/b
+            content = content.replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '$1/$2');
+            
+            // Remove standalone [ ] that are LaTeX delimiters (but keep markdown checkboxes)
+            content = content.replace(/^\s*\[\s*\]\s*$/gm, '');
+            content = content.replace(/^\[\s*$/gm, '');
+            content = content.replace(/^\s*\]\s*$/gm, '');
+            
+            // Remove \[ and \] (LaTeX math delimiters)
+            content = content.replace(/\\\[/g, '');
+            content = content.replace(/\\\]/g, '');
+            
+            // Remove $ $ math delimiters but keep currency $
+            // Only remove if it looks like math mode (has backslashes inside)
+            content = content.replace(/\$([^$]*\\[^$]*)\$/g, '$1');
+            
+            // Clean up any remaining backslashes before common LaTeX commands
+            content = content.replace(/\\(cdot|bullet|ast)/g, '•');
+            content = content.replace(/\\approx/g, '≈');
+            content = content.replace(/\\neq/g, '≠');
+            content = content.replace(/\\leq/g, '≤');
+            content = content.replace(/\\geq/g, '≥');
+            content = content.replace(/\\pm/g, '±');
+            
+            return content;
+        }
+
         // Wrapper for marked.parse that also processes images
         function parseMarkdown(content) {
+            // Clean LaTeX formatting first
+            content = cleanLatexFormatting(content);
             let html = marked.parse(content);
             return processMarkdownImages(html);
         }
