@@ -285,6 +285,39 @@
             border-bottom-left-radius: 5px;
         }
 
+        /* Markdown Tables */
+        .message-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 16px 0;
+            font-size: 0.85rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .message-content th {
+            background: rgba(0, 217, 255, 0.2);
+            color: #00d9ff;
+            font-weight: 600;
+            text-align: left;
+            padding: 12px 10px;
+            border-bottom: 2px solid rgba(0, 217, 255, 0.3);
+        }
+        
+        .message-content td {
+            padding: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .message-content tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .message-content tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
         /* Streaming Cursor */
         .message-content.streaming::after {
             content: '▼';
